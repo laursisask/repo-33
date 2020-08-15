@@ -63,9 +63,6 @@ export interface Connection {
    * Or as:
    *
    *     value('SELECT first_name FROM people where id = $1', [id])
-   *
-   * @param sql
-   * @param params
    */
   value<Value>(
     sql: TemplateStringsArray,
@@ -88,9 +85,6 @@ export interface Connection {
    * Or as:
    *
    *     row('SELECT * FROM people where id = $1', [id])
-   *
-   * @param sql
-   * @param params
    */
   row<Row>(
     sql: TemplateStringsArray,
@@ -109,9 +103,6 @@ export interface Connection {
    * Or as:
    *
    *     rows('SELECT * FROM people where id = $1', [id])
-   *
-   * @param sql
-   * @param params
    */
   rows<Row>(
     sql: TemplateStringsArray,
@@ -127,9 +118,6 @@ export interface Connection {
    * ```
    * let oneThroughFive = await db.column('SELECT * FROM generate_series(1, 5)');
    * ```
-   *
-   * @param sql
-   * @param params
    */
   column<Value>(
     sql: TemplateStringsArray,
@@ -139,7 +127,20 @@ export interface Connection {
   column<Value>(sql: RawSql): Promise<Array<Value>>;
 }
 
+/** APIs for easily working with PostgreSQL. */
 interface SimplePostgres extends Connection {
+  /**
+   * Format an SQL fragment, escaping any values.
+   *
+   * ```
+   * const tpl = db.template`SELECT ${[1, 2, 3]} AS ${db.identifier("a")}`;
+   * ```
+   *
+   * ...would return raw SQL containing `'SELECT Array[1, 2, 3] AS "a"'`. This
+   * could then be passed to other functions like `query` as embedded SQL.
+   *
+   * If you need to combine a series of templates, see `items`.
+   */
   template(strings: TemplateStringsArray, ...values: TemplateArg[]): RawSql;
 
   /**
@@ -159,18 +160,25 @@ interface SimplePostgres extends Connection {
    */
   escapeLiteral(value: escape.Literal): string | number | null;
 
+  /**
+   * Escape `literals` using `separator`. Defaults to `", "`.
+   */
   escapeLiterals(literals: escape.Literal[], separator?: string): string;
 
   /**
    * Escape a value for safe use as an identifier in SQL queries. Returns
    * string.
-   *
-   * @param value
    */
   escapeIdentifier(value: string): string;
 
+  /**
+   * Escape `identifiers` using `separator`. Defaults to `", "`.
+   */
   escapeIdentifiers(identifiers: string[], separator?: string): string;
 
+  /**
+   * Escape a series of template items using `separator`. Defaults to `", "`.
+   */
   items(items: TemplateArg[], separator?: string): RawSql;
 
   /**
@@ -184,14 +192,20 @@ interface SimplePostgres extends Connection {
    * Specify that `idents` should be formatted as a list of SQL identifiers.
    *
    * @param idents The identifiers to format as SQL.
-   * @param separator The string with which to separate identifiers.
+   * @param separator The string with which to separate identifiers. Defaults to
+   * `", "`.
    */
   identifiers(idents: string[], separator?: string): RawSql;
 
-  identifiers(identifiers: string[], separator?: string): RawSql;
+  /**
+   * Specify that `literal` should be formatted as an SQL literal.
+   */
+  literal(literal: escape.Literal): RawSql;
 
-  literal(value: escape.Literal): RawSql;
-
+  /**
+   * Specify that `literals` should be formatted as a list of SQL literals using
+   * `separator`. Defaults to `", "`.
+   */
   literals(literals: escape.Literal[], separator?: string): RawSql;
 
   /**
@@ -211,6 +225,9 @@ interface SimplePostgres extends Connection {
    */
   transaction<T>(block: (conn: Connection) => Promise<T>): Promise<T>;
 
+  /**
+   * Retrieve the underlying connection pool.
+   */
   pool(): Promise<pg.Pool>;
 
   /**
@@ -376,7 +393,7 @@ class ConnectionImpl {
     function wrapFn<Result>(
       f: (client: pg.PoolClient, query: Query) => Promise<Result>
     ): WrappedFn<Result> {
-      // A wrapper function which figures out which of two legal signatures we
+      // A wrapper function which figures out which of three legal signatures we
       // were called with and casts our types appropriately. Be sure this logic
       // matches `WrappedFn` above!
       return function (
