@@ -22,7 +22,8 @@
     "url": "https://github.com/madd512/simple-postgres.git"
   },
   "scripts": {
-    "lint": "standard src/**/*.js; standard --parser babel-eslint test/**/*.js",
+    "fmt": "prettier --write .",
+    "lint": "true",
     "test": "NODE_ENV=test node test/test.js",
     "cover": "NODE_ENV=test istanbul cover -x test/test.js built-test/test.js"
   },
@@ -31,13 +32,12 @@
     "blue-tape": "^0.2.0",
     "git-validate": "^2.1.4",
     "istanbul": "^0.4.3",
-    "standard": "^7.1.1"
+    "prettier": "^2.0.5"
   },
   "standard": {
     "parser": "babel-eslint"
   },
   "pre-commit": [
-    "lint",
-    "test"
+    "lint"
   ]
 }
