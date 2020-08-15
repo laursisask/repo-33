@@ -601,6 +601,11 @@ export interface Config extends pg.PoolConfig, pg.Defaults {
   debug_postgres?: boolean;
 }
 
+/**
+ * Configure a `simple-postgres` instance.
+ *
+ * @param server Either a `postgres://` URL, or a set of configuration options.
+ */
 export function configure(server?: string | Config): SimplePostgres {
   let config: Config;
   if (typeof server === "string") {
