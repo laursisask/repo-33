@@ -1,6 +1,6 @@
 {
-  "name": "simple-postgres",
-  "version": "5.0.0",
+  "name": "@fdy/simple-postgres",
+  "version": "6.0.0-alpha.0",
   "description": "a minimal postgres interface for node",
   "main": "dist/sec/index.js",
   "types": "dist/src/index.d.ts",
