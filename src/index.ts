@@ -588,7 +588,7 @@ function configFromUrl(url: string): Config {
   }
 
   function queryNum(paramName: string): number | undefined {
-    const s = Number(queryStr(paramName));
+    const s = queryStr(paramName);
     if (s == null) return s;
     return Number(s);
   }
@@ -702,7 +702,7 @@ export function configure(urlOrConfig?: string | Config): SimplePostgres {
     const p = await pool();
     const client = await p.connect();
     if (
-      typeof (client as CustomClient).__simplePostgresOnError !== "undefined"
+      typeof (client as CustomClient).__simplePostgresOnError === "undefined"
     ) {
       (client as CustomClient).__simplePostgresOnError = true;
       client.on("error", handleError);
