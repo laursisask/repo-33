@@ -121,6 +121,16 @@ export interface Connection {
   ): Promise<Array<Value>>;
   column<Value>(sql: string, params?: escape.Literal[]): Promise<Array<Value>>;
   column<Value>(sql: RawSql): Promise<Array<Value>>;
+
+  /**
+   * Use a single connection from our database pool to run multiple queries.
+   *
+   * @param block A function. This will be passed a `Connection` object that
+   * re-uses a single pool connection for all queries.
+   */
+  connection<Result>(
+    block: (conn: Connection) => Promise<Result>
+  ): Promise<Result>;
 }
 
 /** APIs for easily working with PostgreSQL. */
@@ -203,15 +213,6 @@ interface SimplePostgres extends Connection {
    * `separator`. Defaults to `", "`.
    */
   literals(literals: escape.Literal[], separator?: string): RawSql;
-
-  /**
-   * Use a single connection from our database pool to run multiple queries.
-   *
-   * @param block A function
-   */
-  connection<Result>(
-    block: (conn: Connection) => Promise<Result>
-  ): Promise<Result>;
 
   /**
    * Perform a database transaction.
@@ -365,6 +366,17 @@ class ConnectionImpl {
     }
   }
 
+  /** Get a single method from our pool and reuse it for multiple queries. */
+  async connection<Result>(
+    work: (conn: Connection) => Promise<Result>
+  ): Promise<Result> {
+    return this.withPoolClient(async (client) => {
+      const withPoolClient: WithPoolClient = (smallerWork) =>
+        smallerWork(client);
+      return work(new ConnectionImpl(withPoolClient).wrap());
+    });
+  }
+
   /**
    * Wrap this `ConnectionImpl` up so that it fulfills the contract of our
    * public `Connection` type.
@@ -423,6 +435,7 @@ class ConnectionImpl {
       row: wrapFn(this.row.bind(this)),
       value: wrapFn(this.value.bind(this)),
       column: wrapFn(this.column.bind(this)),
+      connection: this.connection.bind(this),
     };
   }
 }
@@ -681,21 +694,14 @@ export function configure(urlOrConfig?: string | Config): SimplePostgres {
     // Include all the wrapped methods from our "base" `ConnectionImpl`.
     ...connection,
 
-    // Add a method that gets a single client from our pool and reuse it for
-    // multiple queries.
-    async connection<Result>(
-      work: (conn: Connection) => Promise<Result>
-    ): Promise<Result> {
-      return withConnection(connect(), async (client) => {
-        const withPoolClient: WithPoolClient = (smallerWork) =>
-          smallerWork(client);
-        return work(new ConnectionImpl(withPoolClient).wrap());
-      });
-    },
-
-    // Add a `transaction` method. Sadly these don't nest naturally, because
-    // they're only available on `SimplePostgres` and not on `Connection`. That
-    // could probably be fixed.
+    // Run a method inside a transaction. This is implemented here, and not on
+    // `Connection`, because PostgreSQL only supports a single level of
+    // transactions.
+    //
+    // We could do something clever with SAVEPOINT
+    // https://www.postgresql.org/docs/current/sql-savepoint.html. PostgreSQL also
+    // supports autonomous transactions, but they have the wrong semantics:
+    // "child" transactions can't see the parent.
     transaction<Result>(
       work: (connection: Connection) => Promise<Result>
     ): Promise<Result> {
