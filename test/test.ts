@@ -400,6 +400,58 @@ test("bad sql in transaction", async (t) => {
   );
 });
 
+test("nested transaction", async (t) => {
+  await db.transaction(async (conn) => {
+    await conn.query`create temporary table test_nested (id int)`;
+    await conn.query`insert into test_nested values (1)`;
+    await conn.transaction(async (conn) => {
+      t.deepEqual(
+        await conn.column<number>`select * from test_nested order by id`,
+        [1],
+        "should see parent transaction"
+      );
+
+      // Triple-nested.
+      await conn.query`insert into test_nested values (2)`;
+      await conn.transaction(async (conn) => {
+        t.deepEqual(
+          await conn.column<number>`select * from test_nested order by id`,
+          [1, 2],
+          "should see all parent transactions"
+        );
+        await conn.query`insert into test_nested values (3)`;
+      });
+
+      t.deepEqual(
+        await conn.column<number>`select * from test_nested order by id`,
+        [1, 2, 3],
+        "should see completed child transactions"
+      );
+
+      // Triple-nested for the second time at the same level, and failing.
+      try {
+        await conn.transaction(async (conn) => {
+          await conn.query`insert into test_nested values (4)`;
+          t.deepEqual(
+            await conn.column<number>`select * from test_nested order by id`,
+            [1, 2, 3, 4],
+            "should failing child before it fails"
+          );
+          throw new Error("rolling back");
+        });
+      } catch (e) {
+        t.deepEqual(e.message, "rolling back", "should report rollback error");
+      }
+
+      t.deepEqual(
+        await conn.column<number>`select * from test_nested order by id`,
+        [1, 2, 3],
+        "should not see rolled back child transactions"
+      );
+    });
+  });
+});
+
 test("failed rollback", async (t) => {
   const connectionsBefore = countConnections(await db.pool());
   try {

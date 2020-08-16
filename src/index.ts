@@ -22,6 +22,7 @@ import {
   literal,
   literals,
 } from "./templating";
+import { Transaction, RealTransaction } from "./transaction";
 
 // Export these using ECMAScript modules. This is the preferred way to access
 // these APIs.
@@ -145,6 +146,16 @@ export interface Connection {
   connection<Result>(
     block: (conn: Connection) => Promise<Result>
   ): Promise<Result>;
+
+  /**
+   * Perform a database transaction.
+   *
+   * Transactions can be nested. Internally, nesting uses savepoints.
+   *
+   * @param block A function to run inside the transaction. Should return a
+   * promise. If the promise rejects, the transaction will be rolled back.
+   */
+  transaction<T>(block: (conn: Connection) => Promise<T>): Promise<T>;
 }
 
 /** APIs for easily working with PostgreSQL. */
@@ -239,16 +250,6 @@ interface SimplePostgres extends Connection {
   literals(literals: Literal[], separator?: string): RawSql;
 
   /**
-   * Perform a database transaction.
-   *
-   * Transactions cannot be nested yet, because we don't support `SAVEPOINT`.
-   *
-   * @param block A function to run inside the transaction. Should return a
-   * promise. If the promise rejects, the transaction will be rolled back.
-   */
-  transaction<T>(block: (conn: Connection) => Promise<T>): Promise<T>;
-
-  /**
    * Retrieve the underlying connection pool.
    */
   pool(): Promise<pg.Pool>;
@@ -326,13 +327,20 @@ class ConnectionImpl {
    */
   private withPoolClient: WithPoolClient;
 
+  /** The current transaction, if any. */
+  private currentTransaction: Transaction | null;
+
   /**
    * Construct a new `ConnectionImpl`.
    *
    * @param connect A function which can be used to create a new database pool connection.
    */
-  constructor(withPoolClient: WithPoolClient) {
+  constructor(
+    withPoolClient: WithPoolClient,
+    currentTransction: Transaction | null
+  ) {
     this.withPoolClient = withPoolClient;
+    this.currentTransaction = currentTransction;
   }
 
   async query<Row>(
@@ -392,15 +400,73 @@ class ConnectionImpl {
     }
   }
 
-  /** Get a single method from our pool and reuse it for multiple queries. */
+  /**
+   * Get a single method from our pool and reuse it for multiple queries.
+   *
+   * The `trx` argument will become the current transaction of the nested
+   * connection. We don't include `trx` in the export type for this function.
+   */
   async connection<Result>(
-    work: (conn: Connection) => Promise<Result>
+    work: (conn: Connection) => Promise<Result>,
+    trx: Transaction | null = this.currentTransaction
   ): Promise<Result> {
     return this.withPoolClient(async (client) => {
       const withPoolClient: WithPoolClient = (smallerWork) =>
         smallerWork(client);
-      return work(new ConnectionImpl(withPoolClient).wrap());
+      const impl = new ConnectionImpl(withPoolClient, trx);
+      return work(impl.wrap());
     });
+  }
+
+  /** Create a new transaction. */
+  transaction<Result>(
+    work: (connection: Connection) => Promise<Result>
+  ): Promise<Result> {
+    // Create an appropriate `Transaction` object. This may actually be a
+    // savepoint, but we don't have to care about that.
+    let trx: Transaction;
+    if (this.currentTransaction) {
+      trx = this.currentTransaction.newChildTransaction();
+    } else {
+      trx = new RealTransaction();
+    }
+
+    // Make sure we have a consistent connection for all the statements in this
+    // transaction.
+    return this.connection(async (connIface) => {
+      let result: Result;
+      let inTransaction: boolean = false;
+
+      try {
+        await connIface.query(trx.beginStatement());
+        inTransaction = true;
+        const _result = await work(connIface);
+        result = _result;
+        await connIface.query(trx.commitStatement());
+        return result;
+      } catch (err) {
+        if (!inTransaction) throw err;
+        try {
+          await connIface.query(trx.rollbackStatement());
+        } catch (rollbackErr) {
+          const errVal =
+            err instanceof Error ? err.message + "\n" + err.stack : err;
+          const rollbackErrVal =
+            rollbackErr instanceof Error
+              ? rollbackErr.message + "\n" + rollbackErr.stack
+              : rollbackErr;
+          const bigErr = new Error(
+            "Failed to execute rollback after error\n" +
+              errVal +
+              "\n\n" +
+              rollbackErrVal
+          );
+          (bigErr as AbortConnectionError).ABORT_CONNECTION = true;
+          throw bigErr;
+        }
+        throw err;
+      }
+    }, trx);
   }
 
   /**
@@ -462,6 +528,7 @@ class ConnectionImpl {
       value: wrapFn(this.value.bind(this)),
       column: wrapFn(this.column.bind(this)),
       connection: this.connection.bind(this),
+      transaction: this.transaction.bind(this),
     };
   }
 }
@@ -711,7 +778,7 @@ export function configure(urlOrConfig?: string | Config): SimplePostgres {
   // `connection` below, which reuses one `pg.PoolClient` for multiple queries.
   const withPoolClient: WithPoolClient = (work) =>
     withConnection(connect(), work);
-  const connection = new ConnectionImpl(withPoolClient).wrap();
+  const connection = new ConnectionImpl(withPoolClient, null).wrap();
 
   // Build a `SimplePostgres` value. This isn't a real class, mostly for reasons
   // of backwards compatibility. Instead, it's just a hash table containing
@@ -723,53 +790,6 @@ export function configure(urlOrConfig?: string | Config): SimplePostgres {
 
     // Include all the wrapped methods from our "base" `ConnectionImpl`.
     ...connection,
-
-    // Run a method inside a transaction. This is implemented here, and not on
-    // `Connection`, because PostgreSQL only supports a single level of
-    // transactions.
-    //
-    // We could do something clever with SAVEPOINT
-    // https://www.postgresql.org/docs/current/sql-savepoint.html. PostgreSQL also
-    // supports autonomous transactions, but they have the wrong semantics:
-    // "child" transactions can't see the parent.
-    transaction<Result>(
-      work: (connection: Connection) => Promise<Result>
-    ): Promise<Result> {
-      return iface.connection(async (connIface) => {
-        let result: Result;
-        let inTransaction: boolean = false;
-
-        try {
-          await connIface.query("begin");
-          inTransaction = true;
-          const _result = await work(connIface);
-          result = _result;
-          await connIface.query("commit");
-          return result;
-        } catch (err) {
-          if (!inTransaction) throw err;
-          try {
-            await connIface.query("rollback");
-          } catch (rollbackErr) {
-            const errVal =
-              err instanceof Error ? err.message + "\n" + err.stack : err;
-            const rollbackErrVal =
-              rollbackErr instanceof Error
-                ? rollbackErr.message + "\n" + rollbackErr.stack
-                : rollbackErr;
-            const bigErr = new Error(
-              "Failed to execute rollback after error\n" +
-                errVal +
-                "\n\n" +
-                rollbackErrVal
-            );
-            (bigErr as AbortConnectionError).ABORT_CONNECTION = true;
-            throw bigErr;
-          }
-          throw err;
-        }
-      });
-    },
 
     // These are mostly included here for reasons of backwards compatibility. It
     // would be better to import them as regular ECMAScript module items

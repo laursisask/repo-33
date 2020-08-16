@@ -39,7 +39,7 @@ Many other postgres modules are bad. This one is good. Here's why:
 - runs queries and returns the results
 - automatic query parameterization
 - escaping literals, identifiers, arrays
-- transactions
+- transactions, including nested "transactions" using savepoints
 - async/await ready
 - sets application_name using package.json
 - good test coverage
