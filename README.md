@@ -43,6 +43,7 @@ Many other postgres modules are bad. This one is good. Here's why:
 - async/await ready
 - sets application_name using package.json
 - good test coverage
+- accurate TypeScript declarations (optional)
 - trusted in production by my boss who trusts nothing
 
 #### simple-postgres doesn't have anything you don't need
@@ -58,7 +59,7 @@ Many other postgres modules are bad. This one is good. Here's why:
 
 ### API
 
-##### db.query(sql, params = [])
+#### db.query(sql, params = [])
 
 run a query
 
@@ -71,7 +72,7 @@ let result = await db.query("UPDATE accounts SET enabled = true");
 console.log(result.command + " " + result.rowCount); // => UPDATE 2
 ```
 
-##### db.rows(sql, params = [])
+#### db.rows(sql, params = [])
 
 run a query
 
@@ -84,7 +85,7 @@ for (let account of accounts) {
 }
 ```
 
-##### db.row(sql, params = [])
+#### db.row(sql, params = [])
 
 run a query
 
@@ -97,7 +98,7 @@ let account = await db.row("SELECT * FROM accounts WHERE id = 1");
 console.log(account.name); // => "ACME"
 ```
 
-##### db.value(sql, params = [])
+#### db.value(sql, params = [])
 
 run a query
 
@@ -110,7 +111,7 @@ let accountName = await db.value("SELECT name FROM accounts WHERE id = 1");
 console.log(accountName); // => "ACME"
 ```
 
-##### db.column(sql, params = [])
+#### db.column(sql, params = [])
 
 run a query
 
@@ -123,7 +124,7 @@ let oneThroughFive = await db.column("SELECT * FROM generate_series(1, 5)");
 console.log(oneThroughFive); // => [1, 2, 3, 4, 5]
 ```
 
-##### template string mode
+#### template string mode
 
 Any of the above functions can be used with template string literals to make
 long queries more readable. Interpolated values will be moved to the `params`
@@ -173,7 +174,7 @@ db.value`
 `;
 ```
 
-##### db.template\`SELECT \${a}...\`
+#### db.template\`SELECT \${a}...\`
 
 Prepare a statement for later execution. This is good for testing functions that
 dynamically generate SQL.
@@ -200,7 +201,7 @@ let rawSql = query.__unsafelyGetRawSql();
 // SELECT a, b FROM "users" WHERE account_id IN (SELECT id FROM accounts WHERE name='ACME')
 ```
 
-##### db.transaction(block)
+#### db.transaction(block)
 
 perform a [database transaction](https://www.postgresql.org/docs/current/static/tutorial-transactions.html)
 
@@ -226,7 +227,7 @@ db.transaction(async function (trx) {
 });
 ```
 
-##### db.connection(block)
+#### db.connection(block)
 
 perform multiple queries sequentially on a single connection
 
@@ -244,7 +245,7 @@ let cookies = await db.connection(async function ({ query, value }) {
 });
 ```
 
-##### Query cancellation
+#### Query cancellation
 
 The promises returned by `db.query`, `db.rows`, etc all have a `cancel` method
 which will kill the query on the backend.
@@ -273,7 +274,7 @@ An obscure note about cancellation: `db.connection` and `db.transaction` do not
 have `.cancel()` methods, although you can cancel individual queries you run
 within them.
 
-##### db.escape(value)
+#### db.escape(value)
 
 _alias of db.escapeLiteral_
 
@@ -282,14 +283,14 @@ escape a value for safe use in SQL queries, returns string
 While this function is tested and probably secure, you should avoid using it.
 Instead, use bind vars, as they are much more difficult to mess up.
 
-##### db.escapeIdentifier(value)
+#### db.escapeIdentifier(value)
 
 escape a value for safe use as an identifier in SQL queries, returns string
 
 Same as the above function, except for things like table names, column names,
 etc.
 
-##### db.escapeLiterals(values, separator = ', ')
+#### db.escapeLiterals(values, separator = ', ')
 
 escape an array of literals and join them with the given separator, returns string
 
@@ -297,7 +298,7 @@ escape an array of literals and join them with the given separator, returns stri
 db.escapeLiterals(["a", "b", "c"]) === "'a', 'b', 'c'";
 ```
 
-##### db.escapeIdentifiers(values, separator = ', ')
+#### db.escapeIdentifiers(values, separator = ', ')
 
 escape an array of identifiers and join them with the given separator, returns string
 
@@ -305,7 +306,7 @@ escape an array of identifiers and join them with the given separator, returns s
 db.escapeIdentifiers(["a", "b", "c"]) === '"a", "b", "c"';
 ```
 
-##### db.identifier(value)
+#### db.identifier(value)
 
 escapes an identifier in such a way that it can be passed safely into a template
 query, returns object
@@ -320,7 +321,7 @@ db.query`
 `;
 ```
 
-##### db.identifiers(values, separator = ', ')
+#### db.identifiers(values, separator = ', ')
 
 escapes multiple identifiers in such a way that they can be passed safely into a
 template query, returns object
@@ -332,7 +333,7 @@ db.query`
 `;
 ```
 
-##### db.literals(values, separator = ', ')
+#### db.literals(values, separator = ', ')
 
 escapes multiple literals in such a way that they can be passed safely into a
 template query, returns object
@@ -344,7 +345,7 @@ db.query`
 `;
 ```
 
-##### db.items(values, separator = ', ')
+#### db.items(values, separator = ', ')
 
 escapes multiple items in such a way that they can be passed safely into a
 template query, returns object. Escapes literals by default, but allows identifiers
@@ -368,7 +369,7 @@ FROM books
 */
 ```
 
-##### db.setErrorHandler(callback)
+#### db.setErrorHandler(callback)
 
 sets a callback for otherwise unhandled errors such as dropped connections and other mysteries
 
