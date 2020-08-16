@@ -6,24 +6,20 @@ import { readFileSync } from "fs";
 import { inspect } from "util";
 
 import * as escape from "./escape";
+import {
+  RawSql,
+  TemplateArg,
+  canGetRawSqlFrom,
+  template,
+  templateIdentifier,
+  templateIdentifiers,
+  templateItems,
+  templateLiteral,
+  templateLiterals,
+} from "./templating";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 function DO_NOTHING() {}
-
-/**
- * An internal type representing a value that can be converted to raw SQL.
- */
-interface RawSql {
-  /** Internal function to get the raw SQL. */
-  __unsafelyGetRawSql(): string;
-}
-
-/**
- * An SQL bind parameter.
- *
- * It's important that this should never include any `Promise` type.
- */
-export type TemplateArg = escape.Literal | RawSql;
 
 /**
  * An interface providing access to PostgreSQL.
@@ -387,8 +383,8 @@ class ConnectionImpl {
     }
 
     /**
-     * Wrap a bound class method so that it works with either `WrappedFn`
-     * calling convention.
+     * Wrap a bound class method so that it works with any of the `WrappedFn`
+     * calling conventions.
      */
     function wrapFn<Result>(
       f: (client: pg.PoolClient, query: Query) => Promise<Result>
@@ -470,75 +466,6 @@ function stringifyParameters(params: unknown[]) {
     .join("");
 }
 
-function templateIdentifier(value: string): RawSql {
-  value = escape.identifier(value);
-  return {
-    __unsafelyGetRawSql() {
-      return value;
-    },
-  };
-}
-
-function templateIdentifiers(
-  identifiers: string[],
-  separator?: string
-): RawSql {
-  const value = escape.identifiers(identifiers, separator);
-  return {
-    __unsafelyGetRawSql: function __unsafelyGetRawSql() {
-      return value;
-    },
-  };
-}
-
-function templateLiteral(value: escape.Literal): RawSql {
-  const escaped = escape.literal(value);
-  return {
-    __unsafelyGetRawSql: function __unsafelyGetRawSql() {
-      return escaped;
-    },
-  };
-}
-
-function templateLiterals(
-  literals: escape.Literal[],
-  separator?: string
-): RawSql {
-  const value = escape.literals(literals, separator);
-  return {
-    __unsafelyGetRawSql: function __unsafelyGetRawSql() {
-      return value;
-    },
-  };
-}
-
-function templateItems(items: TemplateArg[], separator: string): RawSql {
-  return {
-    __unsafelyGetRawSql: function __unsafelyGetRawSql() {
-      return items
-        .map((v) =>
-          canGetRawSqlFrom(v) ? v.__unsafelyGetRawSql() : escape.literal(v)
-        )
-        .join(separator || ", ");
-    },
-  };
-}
-
-/**
- * Does `v` appear to be a RawSql value? We use a return type of `v is RawSql`,
- * which makes the answer visible to TypeScript.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function canGetRawSqlFrom(v: any): v is RawSql {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    "__unsafelyGetRawSql" in v &&
-    typeof v["__unsafelyGetRawSql"] === "function" &&
-    Object.keys(v).length === 1
-  );
-}
-
 /**
  * An error so bad that we need to drop the database connection completely.
  *
@@ -601,77 +528,84 @@ export interface Config extends pg.PoolConfig, pg.Defaults {
   debug_postgres?: boolean;
 }
 
+/** Given a Postgres URL, construct a `Config`. */
+function configFromUrl(url: string): Config {
+  const connOpts = parseConnectionString(url);
+  const parsedQuery = parseUrl(url, true).query; // add query parameters
+
+  function queryStr(paramName: string): string | undefined {
+    const value = parsedQuery[paramName];
+    if (Array.isArray(value)) {
+      throw new Error(`found multiple values for ${paramName} in Postgres URL`);
+    }
+    return value;
+  }
+
+  function queryBool(paramName: string): boolean | undefined {
+    const s = queryStr(paramName);
+    if (s == null) return s;
+    return s === "false";
+  }
+
+  function queryNum(paramName: string): number | undefined {
+    const s = Number(queryStr(paramName));
+    if (s == null) return s;
+    return Number(s);
+  }
+
+  return {
+    // From connOpts.
+    host: connOpts.host || undefined,
+    password: connOpts.password,
+    user: connOpts.user,
+    port: connOpts.port != null ? Number(connOpts.port) : undefined,
+    database: connOpts.database || undefined,
+    // TODO: Support more SSL options.
+    ssl: connOpts.ssl ? true : false,
+    application_name: connOpts.application_name,
+
+    // From our URL string.
+    connectionString: queryStr("connectionString"),
+    keepAlive: queryBool("keepAlive"),
+    statement_timeout: queryNum("statement_timeout"),
+    parseInputDatesAsUTC: queryBool("parseInputDatesAsUTC"),
+    query_timeout: queryNum("query_timeout"),
+    keepAliveInitialDelayMillis: queryNum("keepAliveInitialDelayMillis"),
+    idle_in_transaction_session_timeout: queryNum(
+      "idle_in_transaction_session_timeout"
+    ),
+    max: queryNum("max"),
+    min: queryNum("min"),
+    connectionTimeoutMillis: queryNum("connectionTimeoutMillis"),
+    idleTimeoutMillis: queryNum("idleTimeoutMillis"),
+
+    // These aren't accepted according to the type declarations, but I've seen
+    // some of them in the docs. They correspond to `pg.Defaults`.
+    poolSize: queryNum("poolSize"),
+    poolIdleTimeout: queryNum("poolIdleTimeout"),
+    reapIntervalMillis: queryNum("reapIntervalMillis"),
+    binary: queryBool("binary"),
+    parseInt8: queryBool("parseInt8"),
+  };
+}
+
 /**
  * Configure a `simple-postgres` instance.
  *
- * @param server Either a `postgres://` URL, or a set of configuration options.
+ * @param urlOrConfig Either a `postgres://` URL, or a set of configuration
+ * options.
  */
-export function configure(server?: string | Config): SimplePostgres {
+export function configure(urlOrConfig?: string | Config): SimplePostgres {
+  // Figure out our configuration.
   let config: Config;
-  if (typeof server === "string") {
-    const connOpts = parseConnectionString(server);
-    const parsedQuery = parseUrl(server, true).query; // add query parameters
-
-    function queryStr(paramName: string): string | undefined {
-      const value = parsedQuery[paramName];
-      if (Array.isArray(value)) {
-        throw new Error(
-          `found multiple values for ${paramName} in Postgres URL`
-        );
-      }
-      return value;
-    }
-
-    function queryBool(paramName: string): boolean | undefined {
-      const s = queryStr(paramName);
-      if (s == null) return s;
-      return s === "false";
-    }
-
-    function queryNum(paramName: string): number | undefined {
-      const s = Number(queryStr(paramName));
-      if (s == null) return s;
-      return Number(s);
-    }
-
-    config = {
-      // From connOpts.
-      host: connOpts.host || undefined,
-      password: connOpts.password,
-      user: connOpts.user,
-      port: connOpts.port != null ? Number(connOpts.port) : undefined,
-      database: connOpts.database || undefined,
-      // TODO: Support more SSL options.
-      ssl: connOpts.ssl ? true : false,
-      application_name: connOpts.application_name,
-
-      // From our URL string.
-      connectionString: queryStr("connectionString"),
-      keepAlive: queryBool("keepAlive"),
-      statement_timeout: queryNum("statement_timeout"),
-      parseInputDatesAsUTC: queryBool("parseInputDatesAsUTC"),
-      query_timeout: queryNum("query_timeout"),
-      keepAliveInitialDelayMillis: queryNum("keepAliveInitialDelayMillis"),
-      idle_in_transaction_session_timeout: queryNum(
-        "idle_in_transaction_session_timeout"
-      ),
-      max: queryNum("max"),
-      min: queryNum("min"),
-      connectionTimeoutMillis: queryNum("connectionTimeoutMillis"),
-      idleTimeoutMillis: queryNum("idleTimeoutMillis"),
-
-      // These aren't accepted according to the type declarations, but I've seen
-      // some of them in the docs. They correspond to `pg.Defaults`.
-      poolSize: queryNum("poolSize"),
-      poolIdleTimeout: queryNum("poolIdleTimeout"),
-      reapIntervalMillis: queryNum("reapIntervalMillis"),
-      binary: queryBool("binary"),
-      parseInt8: queryBool("parseInt8"),
-    };
-  } else if (typeof server === "undefined") {
+  if (typeof urlOrConfig === "string") {
+    config = configFromUrl(urlOrConfig);
+  } else if (typeof urlOrConfig === "undefined") {
+    // I'm not even sure if this is useful or correct, but this is the code path
+    // we've always taken when `process.env.DATABASE_URL` is not defined.
     config = {};
   } else {
-    config = server;
+    config = urlOrConfig;
   }
 
   // Default some things in a mostly backwards-compatible way.
@@ -704,6 +638,7 @@ export function configure(server?: string | Config): SimplePostgres {
     };
   }
 
+  // Lazy initialization of our Promise pool.
   let _pool: Promise<pg.Pool> | undefined;
   function pool() {
     if (!_pool) {
@@ -716,6 +651,7 @@ export function configure(server?: string | Config): SimplePostgres {
     return _pool;
   }
 
+  /** Fetch a connection from our pool. */
   async function connect(): Promise<PoolClientAndRelease> {
     type CustomClient = pg.PoolClient & { __simplePostgresOnError?: true };
 
@@ -731,22 +667,35 @@ export function configure(server?: string | Config): SimplePostgres {
     return [client, client.release.bind(client)];
   }
 
+  // Set up our "base" `ConnectionImpl`, which will get a `pg.PoolClient` from
+  // the pool before every single SQL statement. This contrasts with
+  // `connection` below, which reuses one `pg.PoolClient` for multiple queries.
   const withPoolClient: WithPoolClient = (work) =>
     withConnection(connect(), work);
   const connection = new ConnectionImpl(withPoolClient).wrap();
 
+  // Build a `SimplePostgres` value. This isn't a real class, mostly for reasons
+  // of backwards compatibility. Instead, it's just a hash table containing
+  // functions that can see `connect()` and `pool()` above.
   const iface: SimplePostgres = {
+    // Include all the wrapped methods from our "base" `ConnectionImpl`.
     ...connection,
 
+    // Add a method that gets a single client from our pool and reuse it for
+    // multiple queries.
     async connection<Result>(
       work: (conn: Connection) => Promise<Result>
     ): Promise<Result> {
       return withConnection(connect(), async (client) => {
-        const withPoolClient: WithPoolClient = (work) => work(client);
+        const withPoolClient: WithPoolClient = (smallerWork) =>
+          smallerWork(client);
         return work(new ConnectionImpl(withPoolClient).wrap());
       });
     },
 
+    // Add a `transaction` method. Sadly these don't nest naturally, because
+    // they're only available on `SimplePostgres` and not on `Connection`. That
+    // could probably be fixed.
     transaction<Result>(
       work: (connection: Connection) => Promise<Result>
     ): Promise<Result> {
@@ -786,32 +735,8 @@ export function configure(server?: string | Config): SimplePostgres {
       });
     },
 
-    template(strings: TemplateStringsArray, ...values: TemplateArg[]): RawSql {
-      const stringsLength = strings.length;
-      const valuesLength = values.length;
-      const maxLength = Math.max(stringsLength, valuesLength);
-
-      return {
-        __unsafelyGetRawSql() {
-          let sql = "";
-          for (let i = 0; i < maxLength; i++) {
-            if (i < stringsLength) {
-              sql += strings[i];
-            }
-            if (i < valuesLength) {
-              const v = values[i];
-              if (canGetRawSqlFrom(v)) {
-                sql += v.__unsafelyGetRawSql();
-              } else {
-                sql += iface.escapeLiteral(v);
-              }
-            }
-          }
-          return sql;
-        },
-      };
-    },
-
+    // These are mostly included here for reasons of backwards compatibility.
+    template,
     escape: escape.literal,
     escapeLiteral: escape.literal,
     escapeLiterals: escape.literals,
@@ -822,8 +747,10 @@ export function configure(server?: string | Config): SimplePostgres {
     identifiers: templateIdentifiers,
     literal: templateLiteral,
     literals: templateLiterals,
-    pool: pool,
-    setErrorHandler: setErrorHandler,
+
+    // Provide access to our pool and error handler.
+    pool,
+    setErrorHandler,
   };
 
   return iface;

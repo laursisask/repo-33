@@ -3,17 +3,19 @@ import pg, { Pool } from "pg";
 import test from "blue-tape";
 import db from "../src";
 
+/** How many connections are currently in this pool? */
 function countConnections(pool: Pool) {
   return pool.totalCount;
 }
 
+/** HACK: Destroy connections out from under our pool. */
 function destroyConnections(pool: Pool) {
   // break things by destroying all connections everywhere
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (pool as any)._clients.map((c: pg.Client) => c.end());
 }
 
-// test("cancel", async function (t) {
+// test("cancel", async (t) => {
 //   let q = db.query("SELECT pg_sleep(10)");
 //   let err;
 //   q.then((val) => t.fail("pg_sleep should be cancelled")).catch((e) => {
@@ -23,7 +25,7 @@ function destroyConnections(pool: Pool) {
 //   t.ok(err instanceof db.Cancel, "query should be cancelled");
 // });
 
-test("db.connection", async function (t) {
+test("db.connection", async (t) => {
   await db.connection(async function ({ query, value }) {
     await query("SET statement_timeout=123456789");
     await db.query("RESET statement_timeout");
@@ -35,7 +37,7 @@ test("db.connection", async function (t) {
   });
 });
 
-// test("db.connection cancel", async function (t) {
+// test("db.connection cancel", async (t) => {
 //   await db.connection(async function ({ query, value }) {
 //     let q = db.query("SELECT pg_sleep(10)");
 //     let err;
@@ -47,7 +49,7 @@ test("db.connection", async function (t) {
 //   });
 // });
 
-test("db.query", async function (t) {
+test("db.query", async (t) => {
   const result = await db.query("select * from generate_series(1, 3) g");
   t.equal(result.rowCount, 3, "should return result with rowCount property");
   t.equal(
@@ -58,7 +60,7 @@ test("db.query", async function (t) {
   t.ok(Array.isArray(result.rows), "should return result with rows property");
 });
 
-test("db.query (template string)", async function (t) {
+test("db.query (template string)", async (t) => {
   const result = await db.query`select * from generate_series(${1}::int, ${
     2 + 1
   }::int) g`;
@@ -71,7 +73,7 @@ test("db.query (template string)", async function (t) {
   t.ok(Array.isArray(result.rows), "should return result with rows property");
 });
 
-test("db.rows", async function (t) {
+test("db.rows", async (t) => {
   t.deepEqual(
     await db.rows("select * from generate_series(1, 3) g"),
     [1, 2, 3].map((g) => ({ g })),
@@ -79,7 +81,7 @@ test("db.rows", async function (t) {
   );
 });
 
-test("db.rows (template string)", async function (t) {
+test("db.rows (template string)", async (t) => {
   t.deepEqual(
     await db.rows`select * from generate_series(${1}::int, ${2 + 1}::int) g`,
     [1, 2, 3].map((g) => ({ g })),
@@ -87,7 +89,7 @@ test("db.rows (template string)", async function (t) {
   );
 });
 
-test("db.row", async function (t) {
+test("db.row", async (t) => {
   t.deepEqual(
     await db.row("select 1 as a"),
     { a: 1 },
@@ -95,7 +97,7 @@ test("db.row", async function (t) {
   );
 });
 
-test("db.row (template string)", async function (t) {
+test("db.row (template string)", async (t) => {
   t.deepEqual(
     await db.row`select ${1}::int as a`,
     { a: 1 },
@@ -103,7 +105,7 @@ test("db.row (template string)", async function (t) {
   );
 });
 
-test("db.row (template string with no args)", async function (t) {
+test("db.row (template string with no args)", async (t) => {
   t.deepEqual(
     await db.row`select 1::int as a`,
     { a: 1 },
@@ -111,15 +113,15 @@ test("db.row (template string with no args)", async function (t) {
   );
 });
 
-test("db.value", async function (t) {
+test("db.value", async (t) => {
   t.equal(await db.value("select 1"), 1, "should return a single value");
 });
 
-test("db.value (template string)", async function (t) {
+test("db.value (template string)", async (t) => {
   t.equal(await db.value`select ${1}::int`, 1, "should return a single value");
 });
 
-test("db.column", async function (t) {
+test("db.column", async (t) => {
   t.deepEqual(
     await db.column("select * from generate_series(1, 3)"),
     [1, 2, 3],
@@ -127,7 +129,7 @@ test("db.column", async function (t) {
   );
 });
 
-test("db.column (template string)", async function (t) {
+test("db.column (template string)", async (t) => {
   t.deepEqual(
     await db.column`select * from generate_series(${1}::int, ${3}::int)`,
     [1, 2, 3],
@@ -135,17 +137,17 @@ test("db.column (template string)", async function (t) {
   );
 });
 
-test("sql-injection-proof template strings", async function (t) {
+test("sql-injection-proof template strings", async (t) => {
   const evil = "SELECT evil\"'";
   t.equal(await db.value`SELECT ${evil}::text`, evil);
 });
 
-test("sql-injection-proof template array values", async function (t) {
+test("sql-injection-proof template array values", async (t) => {
   const evil = "SELECT evil\"'";
   t.deepEqual(await db.value`SELECT ${[evil]}::text[]`, [evil]);
 });
 
-test("escaping", async function (t) {
+test("escaping", async (t) => {
   t.equal(db.escape("a'a\\"), " E'a''a\\\\'");
   t.equal(db.escape(null), "null");
   t.equal(db.escape(false), "false");
@@ -154,18 +156,18 @@ test("escaping", async function (t) {
   t.equal(db.escapeIdentifiers(["a", "b"]), '"a", "b"');
 });
 
-test("identifier escaping", async function (t) {
+test("identifier escaping", async (t) => {
   t.equal(db.escapeIdentifier('weird " ?'), '"weird "" ?"');
 });
 
-test("identifier template escaping", async function (t) {
+test("identifier template escaping", async (t) => {
   t.equal(
     await db.value`SELECT '${db.identifier('weird " string')}'::text`,
     '"weird "" string"'
   );
 });
 
-test("identifiers template escaping", async function (t) {
+test("identifiers template escaping", async (t) => {
   const weird = ['a"a\\'];
   t.deepEqual(
     await db.value`SELECT '${db.identifiers(weird)}'::text`,
@@ -173,12 +175,12 @@ test("identifiers template escaping", async function (t) {
   );
 });
 
-test("literal template escaping", async function (t) {
+test("literal template escaping", async (t) => {
   const weird = "a'a\\";
   t.equal(await db.value`SELECT ${db.literal(weird)}::text`, weird);
 });
 
-test("literals template escaping", async function (t) {
+test("literals template escaping", async (t) => {
   const weird = ["a'a\\"];
   t.deepEqual(
     await db.value`SELECT Array[${db.literals(weird)}]::text[]`,
@@ -186,13 +188,13 @@ test("literals template escaping", async function (t) {
   );
 });
 
-test("array escaping", async function (t) {
+test("array escaping", async (t) => {
   t.equal(db.escape([1, 2, 3]), "Array[1, 2, 3]");
   t.equal(db.escape(["a'", "b", 'c"']), "Array['a''', 'b', 'c\"']");
   t.equal(db.escape([true, false, null]), "Array[true, false, null]");
 });
 
-test("sql template", async function (t) {
+test("sql template", async (t) => {
   const tpl = db.template`SELECT ${1} AS a, ${[1, 2, 3]} AS ${db.identifier(
     "b"
   )}`;
@@ -202,7 +204,7 @@ test("sql template", async function (t) {
   t.deepEqual(result, { a: 1, b: [1, 2, 3] });
 });
 
-test("nested sql template", async function (t) {
+test("nested sql template", async (t) => {
   const subquery = db.template`SELECT ${1} AS ${db.identifier("a")}`;
   const query = db.template`SELECT ${db.identifier("b")}.${db.identifier(
     "a"
@@ -216,17 +218,17 @@ test("nested sql template", async function (t) {
   t.deepEqual(result, { a: 1 });
 });
 
-test("items template escaping", async function (t) {
+test("items template escaping", async (t) => {
   const query = db.items([1, "2", db.template`COALESCE(3, 4)`]);
   t.equal(query.__unsafelyGetRawSql(), "1, '2', COALESCE(3, 4)");
 });
 
-test("successful transaction", async function (t) {
+test("successful transaction", async (t) => {
   await db.query("drop table if exists beep");
   await db.query("create table beep (id integer)");
   await db.query("insert into beep (id) values (1), (2), (3)");
 
-  await db.transaction(async function (trx) {
+  await db.transaction(async (trx) => {
     t.deepEqual(
       await trx.column("select id from beep order by id -- trx 1"),
       [1, 2, 3],
@@ -256,7 +258,7 @@ test("successful transaction", async function (t) {
   );
 });
 
-test("bad connection url", async function (t) {
+test("bad connection url", async (t) => {
   try {
     await db.configure("postgres://example").query("select 1");
     t.fail("should not be able to connect to postgres://example");
@@ -266,7 +268,7 @@ test("bad connection url", async function (t) {
   }
 });
 
-test("bad query", async function (t) {
+test("bad query", async (t) => {
   try {
     await db.query("not a real sql query lol");
     t.fail("should not be able to execute an invalid query");
@@ -279,7 +281,7 @@ test("bad query", async function (t) {
   }
 });
 
-test("bad query with params", async function (t) {
+test("bad query with params", async (t) => {
   try {
     await db.query(
       "SELECT * FROM imaginary_table WHERE id = $1 AND imaginary = $2",
@@ -295,7 +297,7 @@ test("bad query with params", async function (t) {
   }
 });
 
-test("error with notice", async function (t) {
+test("error with notice", async (t) => {
   const sql =
     "DO language plpgsql $$ BEGIN RAISE NOTICE 'notice'; SELECT '1.0'::int; END $$";
   try {
@@ -309,7 +311,7 @@ test("error with notice", async function (t) {
   }
 });
 
-test("error with multiple notices", async function (t) {
+test("error with multiple notices", async (t) => {
   const sql =
     "DO language plpgsql $$ BEGIN RAISE NOTICE 'notice'; RAISE WARNING 'warning'; SELECT '1.0'::int; END $$";
   try {
@@ -323,10 +325,10 @@ test("error with multiple notices", async function (t) {
   }
 });
 
-test("bad sql in transaction", async function (t) {
+test("bad sql in transaction", async (t) => {
   let expectedConnections: number | undefined;
   try {
-    await db.transaction(async function ({ query }) {
+    await db.transaction(async ({ query }) => {
       await query("not a real sql query lol");
     });
     t.fail("transaction errors should cause the promise to reject");
@@ -346,11 +348,11 @@ test("bad sql in transaction", async function (t) {
   );
 });
 
-test("failed rollback", async function (t) {
+test("failed rollback", async (t) => {
   const connectionsBefore = countConnections(await db.pool());
   try {
     console.log("before transaction");
-    await db.transaction(async function () {
+    await db.transaction(async () => {
       // break the transaction by destroying all connections everywhere
       console.log("destroyConnections");
       await destroyConnections(await db.pool());
