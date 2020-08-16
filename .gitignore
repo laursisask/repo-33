@@ -1,5 +1,3 @@
-built-test
-/node_modules
-/dist
-coverage
-.idea
+/node_modules/
+/dist/
+/coverage/
