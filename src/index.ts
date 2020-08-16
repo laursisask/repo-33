@@ -5,21 +5,42 @@ import findRoot from "find-root";
 import { readFileSync } from "fs";
 import { inspect } from "util";
 
-import * as escape from "./escape";
+import {
+  Literal,
+  escapeIdentifier,
+  escapeIdentifiers,
+  escapeLiteral,
+  escapeLiterals,
+} from "./escape";
 import {
   RawSql,
   TemplateArg,
   canGetRawSqlFrom,
   template,
-  templateIdentifier,
-  templateIdentifiers,
-  templateItems,
-  templateLiteral,
-  templateLiterals,
+  identifier,
+  identifiers,
+  items,
+  literal,
+  literals,
 } from "./templating";
 
-// eslint-disable-next-line @typescript-eslint/no-empty-function
-function DO_NOTHING() {}
+// Export these using ECMAScript modules. This is the preferred way to access
+// these APIs.
+export {
+  Literal,
+  escapeIdentifier,
+  escapeIdentifiers,
+  escapeLiteral,
+  escapeLiterals,
+  RawSql,
+  TemplateArg,
+  template,
+  identifier,
+  identifiers,
+  items,
+  literal,
+  literals,
+};
 
 /**
  * An interface providing access to PostgreSQL.
@@ -43,10 +64,7 @@ export interface Connection {
     sql: TemplateStringsArray,
     ...params: TemplateArg[]
   ): Promise<pg.QueryResult<Row>>;
-  query<Row>(
-    sql: string,
-    params?: escape.Literal[]
-  ): Promise<pg.QueryResult<Row>>;
+  query<Row>(sql: string, params?: Literal[]): Promise<pg.QueryResult<Row>>;
   query<Row>(sql: RawSql): Promise<pg.QueryResult<Row>>;
 
   /**
@@ -64,10 +82,7 @@ export interface Connection {
     sql: TemplateStringsArray,
     ...params: TemplateArg[]
   ): Promise<Value | undefined>;
-  value<Value>(
-    sql: string,
-    params?: escape.Literal[]
-  ): Promise<Value | undefined>;
+  value<Value>(sql: string, params?: Literal[]): Promise<Value | undefined>;
   value<Value>(sql: RawSql): Promise<Value | undefined>;
 
   /**
@@ -86,7 +101,7 @@ export interface Connection {
     sql: TemplateStringsArray,
     ...params: TemplateArg[]
   ): Promise<Row | undefined>;
-  row<Row>(sql: string, params?: escape.Literal[]): Promise<Row | undefined>;
+  row<Row>(sql: string, params?: Literal[]): Promise<Row | undefined>;
   row<Row>(sql: RawSql): Promise<Row | undefined>;
 
   /**
@@ -104,7 +119,7 @@ export interface Connection {
     sql: TemplateStringsArray,
     ...params: TemplateArg[]
   ): Promise<Array<Row>>;
-  rows<Row>(sql: string, params?: escape.Literal[]): Promise<Array<Row>>;
+  rows<Row>(sql: string, params?: Literal[]): Promise<Array<Row>>;
   rows<Row>(sql: RawSql): Promise<Array<Row>>;
 
   /**
@@ -119,7 +134,7 @@ export interface Connection {
     sql: TemplateStringsArray,
     ...params: TemplateArg[]
   ): Promise<Array<Value>>;
-  column<Value>(sql: string, params?: escape.Literal[]): Promise<Array<Value>>;
+  column<Value>(sql: string, params?: Literal[]): Promise<Array<Value>>;
   column<Value>(sql: RawSql): Promise<Array<Value>>;
 
   /**
@@ -136,6 +151,46 @@ export interface Connection {
 /** APIs for easily working with PostgreSQL. */
 interface SimplePostgres extends Connection {
   /**
+   * Alias of db.escapeLiteral. Escape a value for safe use in SQL queries,
+   * returning a string.
+   *
+   * While this function is tested and probably secure, you should avoid using
+   * it. Instead, use bind vars, as they are much more difficult to mess up.
+   */
+  escape(value: Literal): string | number | null;
+
+  /**
+   * Escape a value for safe use in SQL queries, returning a string.
+   *
+   * While this function is tested and probably secure, you should avoid using
+   * it. Instead, use bind vars, as they are much more difficult to mess up.
+   */
+  escapeLiteral(value: Literal): string | number | null;
+
+  /**
+   * Escape `literals` using `separator`. Defaults to `", "`.
+   *
+   * While this function is tested and probably secure, you should avoid using
+   * it. Instead, use bind vars, as they are much more difficult to mess up.
+   */
+  escapeLiterals(literals: Literal[], separator?: string): string;
+
+  /**
+   * Escape a value for safe use as an identifier in SQL queries. Returns
+   * string.
+   *
+   * Prefer `identifier` instead.
+   */
+  escapeIdentifier(value: string): string;
+
+  /**
+   * Escape `idents` using `separator`. Defaults to `", "`.
+   *
+   * Prefer `identifiers` instead.
+   */
+  escapeIdentifiers(idents: string[], separator?: string): string;
+
+  /**
    * Format an SQL fragment, escaping any values.
    *
    * ```
@@ -150,40 +205,10 @@ interface SimplePostgres extends Connection {
   template(strings: TemplateStringsArray, ...values: TemplateArg[]): RawSql;
 
   /**
-   * Alias of db.escapeLiteral. Escape a value for safe use in SQL queries,
-   * returning a string.
-   *
-   * While this function is tested and probably secure, you should avoid using
-   * it. Instead, use bind vars, as they are much more difficult to mess up.
-   */
-  escape(value: escape.Literal): string | number | null;
-
-  /**
-   * Escape a value for safe use in SQL queries, returning a string.
-   *
-   * While this function is tested and probably secure, you should avoid using
-   * it. Instead, use bind vars, as they are much more difficult to mess up.
-   */
-  escapeLiteral(value: escape.Literal): string | number | null;
-
-  /**
-   * Escape `literals` using `separator`. Defaults to `", "`.
-   */
-  escapeLiterals(literals: escape.Literal[], separator?: string): string;
-
-  /**
-   * Escape a value for safe use as an identifier in SQL queries. Returns
-   * string.
-   */
-  escapeIdentifier(value: string): string;
-
-  /**
-   * Escape `identifiers` using `separator`. Defaults to `", "`.
-   */
-  escapeIdentifiers(identifiers: string[], separator?: string): string;
-
-  /**
    * Escape a series of template items using `separator`. Defaults to `", "`.
+   *
+   * This is especially useful for combining the result of several calls to
+   * `template`.
    */
   items(items: TemplateArg[], separator?: string): RawSql;
 
@@ -206,16 +231,18 @@ interface SimplePostgres extends Connection {
   /**
    * Specify that `literal` should be formatted as an SQL literal.
    */
-  literal(literal: escape.Literal): RawSql;
+  literal(literal: Literal): RawSql;
 
   /**
    * Specify that `literals` should be formatted as a list of SQL literals using
    * `separator`. Defaults to `", "`.
    */
-  literals(literals: escape.Literal[], separator?: string): RawSql;
+  literals(literals: Literal[], separator?: string): RawSql;
 
   /**
    * Perform a database transaction.
+   *
+   * Transactions cannot be nested yet, because we don't support `SAVEPOINT`.
    *
    * @param block A function to run inside the transaction. Should return a
    * promise. If the promise rejects, the transaction will be rolled back.
@@ -245,7 +272,7 @@ type Query = {
   /** The SQL query. */
   sql: string;
   /** Query parameters. */
-  params: escape.Literal[];
+  params: Literal[];
 };
 
 /**
@@ -259,7 +286,7 @@ function queryAndParamsForTemplate(
   const valuesLength = values.length;
   const maxLength = Math.max(stringsLength, valuesLength);
   let sql = "";
-  const params: escape.Literal[] = [];
+  const params: Literal[] = [];
   for (let i = 0; i < maxLength; i++) {
     if (i < stringsLength) {
       sql += strings[i];
@@ -390,7 +417,7 @@ class ConnectionImpl {
     /** The shape of a function like `query<Result>` once we wrap it. */
     interface WrappedFn<Result> {
       (sql: TemplateStringsArray, ...params: TemplateArg[]): Promise<Result>;
-      (sql: string, params?: escape.Literal[]): Promise<Result>;
+      (sql: string, params?: Literal[]): Promise<Result>;
       (sql: RawSql): Promise<Result>;
     }
 
@@ -411,7 +438,7 @@ class ConnectionImpl {
         return withPoolClient((client) => {
           if (typeof sql === "string") {
             // We have a string query and all our args in `params[0]`.
-            return f(client, { sql, params: params[0] as escape.Literal[] });
+            return f(client, { sql, params: params[0] as Literal[] });
           } else if (canGetRawSqlFrom(sql)) {
             return f(client, {
               sql: sql.__unsafelyGetRawSql(),
@@ -602,6 +629,9 @@ function configFromUrl(url: string): Config {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-function
+function DO_NOTHING() {}
+
 /**
  * Configure a `simple-postgres` instance.
  *
@@ -691,6 +721,10 @@ export function configure(urlOrConfig?: string | Config): SimplePostgres {
   // of backwards compatibility. Instead, it's just a hash table containing
   // functions that can see `connect()` and `pool()` above.
   const iface: SimplePostgres = {
+    // Provide access to our pool and error handler.
+    pool,
+    setErrorHandler,
+
     // Include all the wrapped methods from our "base" `ConnectionImpl`.
     ...connection,
 
@@ -741,22 +775,20 @@ export function configure(urlOrConfig?: string | Config): SimplePostgres {
       });
     },
 
-    // These are mostly included here for reasons of backwards compatibility.
+    // These are mostly included here for reasons of backwards compatibility. It
+    // would be better to import them as regular ECMAScript module items
+    // instead.
+    escape: escapeLiteral,
+    escapeLiteral,
+    escapeLiterals,
+    escapeIdentifier,
+    escapeIdentifiers,
     template,
-    escape: escape.literal,
-    escapeLiteral: escape.literal,
-    escapeLiterals: escape.literals,
-    escapeIdentifier: escape.identifier,
-    escapeIdentifiers: escape.identifiers,
-    items: templateItems,
-    identifier: templateIdentifier,
-    identifiers: templateIdentifiers,
-    literal: templateLiteral,
-    literals: templateLiterals,
-
-    // Provide access to our pool and error handler.
-    pool,
-    setErrorHandler,
+    items,
+    identifier,
+    identifiers,
+    literal,
+    literals,
   };
 
   return iface;

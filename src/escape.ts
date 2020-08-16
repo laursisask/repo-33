@@ -2,7 +2,13 @@
 // ported from PostgreSQL 9.2.4 source code in src/interfaces/libpq/fe-exec.c
 // non-string handling added
 
-export function identifier(str: string): string {
+/**
+ * Escape a value for safe use as an identifier in SQL queries. Returns
+ * string.
+ *
+ * Prefer `identifier` instead.
+ */
+export function escapeIdentifier(str: string): string {
   let escaped = '"';
   for (let i = 0; i < str.length; i++) {
     const c = str[i];
@@ -16,16 +22,30 @@ export function identifier(str: string): string {
   return escaped;
 }
 
-export function identifiers(
-  identifiers: string[],
+/**
+ * Escape `idents` using `separator`. Defaults to `", "`.
+ *
+ * Prefer `identifiers` instead.
+ */
+export function escapeIdentifiers(
+  idents: string[],
   separator: string = ", "
 ): string {
-  return identifiers.map(identifier).join(separator);
+  return idents.map(escapeIdentifier).join(separator);
 }
 
+/**
+ * A literal value which can be escaped as valid SQL.
+ */
 export type Literal = string | number | boolean | null | Literal[];
 
-export function literal(str: Literal): string {
+/**
+ * Escape a value for safe use in SQL queries, returning a string.
+ *
+ * While this function is tested and probably secure, you should avoid using
+ * it. Instead, use bind vars, as they are much more difficult to mess up.
+ */
+export function escapeLiteral(str: Literal): string {
   if (typeof str === "number") {
     return String(str);
   } else if (str === null) {
@@ -35,7 +55,7 @@ export function literal(str: Literal): string {
   } else if (str === false) {
     return "false";
   } else if (Array.isArray(str)) {
-    return "Array[" + str.map(literal).join(", ") + "]";
+    return "Array[" + str.map(escapeLiteral).join(", ") + "]";
   }
 
   let hasBackslash = false;
@@ -58,9 +78,15 @@ export function literal(str: Literal): string {
   return escaped;
 }
 
-export function literals(
+/**
+ * Escape `literals` using `separator`. Defaults to `", "`.
+ *
+ * While this function is tested and probably secure, you should avoid using
+ * it. Instead, use bind vars, as they are much more difficult to mess up.
+ */
+export function escapeLiterals(
   literals: Literal[],
   separator: string = ", "
 ): string {
-  return literals.map(literal).join(separator);
+  return literals.map(escapeLiteral).join(separator);
 }

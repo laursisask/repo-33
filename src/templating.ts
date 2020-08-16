@@ -1,7 +1,13 @@
 // Utilities that allow the user to safely insert SQL fragments directly into
 // the query they're building.
 
-import * as escape from "./escape";
+import {
+  Literal,
+  escapeIdentifier,
+  escapeIdentifiers,
+  escapeLiteral,
+  escapeLiterals,
+} from "./escape";
 
 /**
  * An internal type representing a value that can be converted to raw SQL.
@@ -29,15 +35,16 @@ export function canGetRawSqlFrom(v: unknown): v is RawSql {
   );
 }
 
-/**
- * An SQL bind parameter.
- *
- * It's important that this should never include any `Promise` type.
- */
-export type TemplateArg = escape.Literal | RawSql;
+/** A value that can be interpolated into an SQL template. */
+export type TemplateArg = Literal | RawSql;
 
-export function templateIdentifier(value: string): RawSql {
-  value = escape.identifier(value);
+/**
+ * Specify that `ident` should be formatted as an SQL identifier.
+ *
+ * @param ident The identifier to format as SQL.
+ */
+export function identifier(value: string): RawSql {
+  value = escapeIdentifier(value);
   return {
     __unsafelyGetRawSql() {
       return value;
@@ -45,11 +52,15 @@ export function templateIdentifier(value: string): RawSql {
   };
 }
 
-export function templateIdentifiers(
-  identifiers: string[],
-  separator?: string
-): RawSql {
-  const value = escape.identifiers(identifiers, separator);
+/**
+ * Specify that `idents` should be formatted as a list of SQL identifiers.
+ *
+ * @param idents The identifiers to format as SQL.
+ * @param separator The string with which to separate identifiers. Defaults to
+ * `", "`.
+ */
+export function identifiers(identifiers: string[], separator?: string): RawSql {
+  const value = escapeIdentifiers(identifiers, separator);
   return {
     __unsafelyGetRawSql: function __unsafelyGetRawSql() {
       return value;
@@ -57,8 +68,11 @@ export function templateIdentifiers(
   };
 }
 
-export function templateLiteral(value: escape.Literal): RawSql {
-  const escaped = escape.literal(value);
+/**
+ * Specify that `literal` should be formatted as an SQL literal.
+ */
+export function literal(value: Literal): RawSql {
+  const escaped = escapeLiteral(value);
   return {
     __unsafelyGetRawSql: function __unsafelyGetRawSql() {
       return escaped;
@@ -66,11 +80,12 @@ export function templateLiteral(value: escape.Literal): RawSql {
   };
 }
 
-export function templateLiterals(
-  literals: escape.Literal[],
-  separator?: string
-): RawSql {
-  const value = escape.literals(literals, separator);
+/**
+ * Specify that `literals` should be formatted as a list of SQL literals using
+ * `separator`. Defaults to `", "`.
+ */
+export function literals(literals: Literal[], separator?: string): RawSql {
+  const value = escapeLiterals(literals, separator);
   return {
     __unsafelyGetRawSql: function __unsafelyGetRawSql() {
       return value;
@@ -79,18 +94,17 @@ export function templateLiterals(
 }
 
 /**
- * Combine several items into one `RawSql` fragment safely. Useful with
+ * Escape a series of template items using `separator`. Defaults to `", "`.
+ *
+ * This is especially useful for combining the result of several calls to
  * `template`.
  */
-export function templateItems(
-  items: TemplateArg[],
-  separator?: string
-): RawSql {
+export function items(items: TemplateArg[], separator?: string): RawSql {
   return {
     __unsafelyGetRawSql: function __unsafelyGetRawSql() {
       return items
         .map((v) =>
-          canGetRawSqlFrom(v) ? v.__unsafelyGetRawSql() : escape.literal(v)
+          canGetRawSqlFrom(v) ? v.__unsafelyGetRawSql() : escapeLiteral(v)
         )
         .join(separator || ", ");
     },
@@ -98,8 +112,16 @@ export function templateItems(
 }
 
 /**
- * Render a template directly to `RawSql`. Useful for recursively constructing
- * SQL.
+ * Format an SQL fragment, escaping any values.
+ *
+ * ```
+ * const tpl = db.template`SELECT ${[1, 2, 3]} AS ${db.identifier("a")}`;
+ * ```
+ *
+ * ...would return raw SQL containing `'SELECT Array[1, 2, 3] AS "a"'`. This
+ * could then be passed to other functions like `query` as embedded SQL.
+ *
+ * If you need to combine a series of templates, see `items`.
  */
 export function template(
   strings: TemplateStringsArray,
@@ -121,7 +143,7 @@ export function template(
           if (canGetRawSqlFrom(v)) {
             sql += v.__unsafelyGetRawSql();
           } else {
-            sql += escape.literal(v);
+            sql += escapeLiteral(v);
           }
         }
       }
