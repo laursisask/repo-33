@@ -1,6 +1,5 @@
 import pg, { Pool } from "pg";
 import { parse as parseConnectionString } from "pg-connection-string";
-import { parse as parseUrl } from "url";
 import findRoot from "find-root";
 import { readFileSync } from "fs";
 import { inspect } from "util";
@@ -569,22 +568,19 @@ export interface Config extends pg.PoolConfig, pg.Defaults {
 }
 
 /** Given a Postgres URL, construct a `Config`. */
-function configFromUrl(url: string): Config {
+export function configFromUrl(url: string): Config {
   const connOpts = parseConnectionString(url);
-  const parsedQuery = parseUrl(url, true).query; // add query parameters
+  const parsedQuery = new URL(url).searchParams; // add query parameters
 
   function queryStr(paramName: string): string | undefined {
-    const value = parsedQuery[paramName];
-    if (Array.isArray(value)) {
-      throw new Error(`found multiple values for ${paramName} in Postgres URL`);
-    }
-    return value;
+    const value = parsedQuery.get(paramName);
+    return value != null ? value : undefined;
   }
 
   function queryBool(paramName: string): boolean | undefined {
     const s = queryStr(paramName);
     if (s == null) return s;
-    return s === "false";
+    return s !== "false";
   }
 
   function queryNum(paramName: string): number | undefined {

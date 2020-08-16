@@ -1,7 +1,21 @@
+import assert from "assert";
 import pg, { Pool } from "pg";
 
 import test from "blue-tape";
-import db from "../src";
+import db, {
+  configure,
+  configFromUrl,
+  escapeIdentifier,
+  escapeIdentifiers,
+  escapeLiteral,
+  escapeLiterals,
+  template,
+  identifier,
+  identifiers,
+  items,
+  literal,
+  literals,
+} from "../src";
 
 /** How many connections are currently in this pool? */
 function countConnections(pool: Pool) {
@@ -126,6 +140,11 @@ test("db.column", async (t) => {
     await db.column("select * from generate_series(1, 3)"),
     [1, 2, 3],
     "should return an array of the first value in each row"
+  );
+  t.deepEqual(
+    await db.column("select * from generate_series(1, 0)"),
+    [],
+    "should handle empty results"
   );
 });
 
@@ -268,6 +287,35 @@ test("bad connection url", async (t) => {
   }
 });
 
+test("config(configFromUrl(...))", async (t) => {
+  const config = configFromUrl(
+    "postgres://example.com/?keepAlive=false&query_timeout=100"
+  );
+  t.strictEqual(config.keepAlive, false, "should parse boolean options");
+  t.strictEqual(config.query_timeout, 100, "should parse numeric options");
+  db.configure(config);
+});
+
+test("debug_postgres", async (t) => {
+  const DATABASE_URL = process.env.DATABASE_URL;
+  assert(DATABASE_URL != null, "must set DATABASE_URL for tests");
+  const config = configFromUrl(DATABASE_URL);
+  config.debug_postgres = true;
+  const db2 = configure(config);
+  t.strictEqual(await db2.value`SELECT 1;`, 1, "query should return value");
+});
+
+test("no configuration", async () => {
+  // Make sure we hit the branches for this during configuration for better
+  // coverage.
+  process.env.PG_POOL_SIZE = "8";
+  process.env.PG_IDLE_TIMEOUT = "100";
+
+  // This happens automatically on startup if `DATABASE_URL` is unset. I'm not
+  // sure it's useful for anything, but we need to make sure it doesn't crash.
+  db.configure();
+});
+
 test("bad query", async (t) => {
   try {
     await db.query("not a real sql query lol");
@@ -326,6 +374,10 @@ test("error with multiple notices", async (t) => {
 });
 
 test("bad sql in transaction", async (t) => {
+  db.setErrorHandler((e) => {
+    console.log("expected error", e);
+  });
+
   let expectedConnections: number | undefined;
   try {
     await db.transaction(async ({ query }) => {
@@ -385,4 +437,27 @@ test("failed rollback", async (t) => {
     connectionsBefore - 1,
     "failed transaction rollbacks should remove the client from the pool"
   );
+});
+
+test("escape and template functions are exported", async (t) => {
+  const fns = [
+    escapeIdentifier,
+    escapeIdentifiers,
+    escapeLiteral,
+    escapeLiterals,
+    template,
+    identifier,
+    identifiers,
+    items,
+    literal,
+    literals,
+  ];
+  for (const fn of fns) {
+    // The `db.` prefixed versions are for backwards compatibility.
+    t.deepEqual(
+      fn,
+      (db as Record<string, unknown>)[fn.name],
+      `${fn.name} and db.${fn.name} should be the same function`
+    );
+  }
 });
