@@ -343,6 +343,12 @@ class ConnectionImpl {
     this.currentTransaction = currentTransction;
   }
 
+  /**
+   * Our underlying query implementation, used by higher-level query functions.
+   *
+   * This is the internal version that takes a pre-normalized `Query`, not the
+   * public version that takes a variety of different types. See `wrap`, below.
+   */
   async query<Row>(
     client: pg.PoolClient,
     query: Query
@@ -394,9 +400,7 @@ class ConnectionImpl {
       return [];
     } else {
       const col = Object.keys(result.rows[0])[0];
-      return result.rows.map(function (row) {
-        return row[col];
-      });
+      return result.rows.map((row) => row[col]);
     }
   }
 
@@ -431,23 +435,23 @@ class ConnectionImpl {
       trx = new RealTransaction();
     }
 
-    // Make sure we have a consistent connection for all the statements in this
-    // transaction.
-    return this.connection(async (connIface) => {
+    // Use `connection` to make sure we have a consistent connection for all the
+    // statements in this transaction.
+    return this.connection(async (conn) => {
       let result: Result;
       let inTransaction: boolean = false;
 
       try {
-        await connIface.query(trx.beginStatement());
+        await conn.query(trx.beginStatement());
         inTransaction = true;
-        const _result = await work(connIface);
+        const _result = await work(conn);
         result = _result;
-        await connIface.query(trx.commitStatement());
+        await conn.query(trx.commitStatement());
         return result;
       } catch (err) {
         if (!inTransaction) throw err;
         try {
-          await connIface.query(trx.rollbackStatement());
+          await conn.query(trx.rollbackStatement());
         } catch (rollbackErr) {
           const errVal =
             err instanceof Error ? err.message + "\n" + err.stack : err;
@@ -549,16 +553,15 @@ export class SqlError extends Error {
     super();
     Object.assign(this, pgError);
     this.name = "SqlError";
-    this.message =
-      "SQL Error: " +
-      [...notices.map((e) => `notice: ${e.message}`), pgError.message].join(
-        "\n"
-      ) +
-      "\n" +
-      sql +
-      (params && params.length
+    const noticesStr = [
+      ...notices.map((e) => `notice: ${e.message}`),
+      pgError.message,
+    ].join("\n");
+    const paramsStr =
+      params && params.length
         ? "\nQuery parameters:" + stringifyParameters(params)
-        : "");
+        : "";
+    this.message = `SQL Error: ${noticesStr}\n${sql}${paramsStr}`;
     this.stack = this.message + "\n";
     if (stack != null) this.stack += stack.replace(/^.+\n/, "");
   }
@@ -566,9 +569,7 @@ export class SqlError extends Error {
 
 function stringifyParameters(params: unknown[]) {
   return params
-    .map(function (p, i) {
-      return "\n  $" + (i + 1) + ": " + typeof p + " " + inspect(p);
-    })
+    .map((p, i) => `\n  $${i + 1}: ${typeof p} ${inspect(p)}`)
     .join("");
 }
 
@@ -781,19 +782,18 @@ export function configure(urlOrConfig?: string | Config): SimplePostgres {
   const connection = new ConnectionImpl(withPoolClient, null).wrap();
 
   // Build a `SimplePostgres` value. This isn't a real class, mostly for reasons
-  // of backwards compatibility. Instead, it's just a hash table containing
-  // functions that can see `connect()` and `pool()` above.
-  const iface: SimplePostgres = {
+  // of backwards compatibility.
+  return {
+    // Include all the wrapped methods from our "base" `ConnectionImpl`.
+    ...connection,
+
     // Provide access to our pool and error handler.
     pool,
     setErrorHandler,
 
-    // Include all the wrapped methods from our "base" `ConnectionImpl`.
-    ...connection,
-
     // These are mostly included here for reasons of backwards compatibility. It
-    // would be better to import them as regular ECMAScript module items
-    // instead.
+    // would be better for callers to import them as regular ECMAScript module
+    // items instead.
     escape: escapeLiteral,
     escapeLiteral,
     escapeLiterals,
@@ -806,8 +806,6 @@ export function configure(urlOrConfig?: string | Config): SimplePostgres {
     literal,
     literals,
   };
-
-  return iface;
 }
 
 export default {
