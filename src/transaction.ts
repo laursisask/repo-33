@@ -17,6 +17,14 @@ export abstract class Transaction {
 
 /** A top-level transaction. */
 export class RealTransaction extends Transaction {
+  /** The number to use for the next savepoint. */
+  private nextSavepointNumber: number;
+
+  constructor() {
+    super();
+    this.nextSavepointNumber = 0;
+  }
+
   beginStatement(): RawSql {
     return sql`begin`;
   }
@@ -30,7 +38,17 @@ export class RealTransaction extends Transaction {
   }
 
   newChildTransaction(): Transaction {
-    return new Savepoint(1);
+    return new Savepoint(this);
+  }
+
+  /**
+   * Returns an SQL identifier for a savepoint which is unique in this
+   * transaction.
+   */
+  getUniqueSavepointId(): RawSql {
+    const ident = identifier(`save_${this.nextSavepointNumber}`);
+    this.nextSavepointNumber += 1;
+    return ident;
   }
 }
 
@@ -42,36 +60,36 @@ export class RealTransaction extends Transaction {
  * statements.
  */
 export class Savepoint extends Transaction {
-  /** A unique ID number for this savepoint within the current transaction. */
-  private id: number;
+  /** The root transaction, for generating unique savepoint names. */
+  private rootTransaction: RealTransaction;
 
-  /** A unique name for this savepoint within the current transaction. */
-  private savepointName: RawSql;
+  /** A unique identifier for this savepoint within the current transaction. */
+  private id: RawSql;
 
   /**
-   * Create a new savepoint with the specified ID, which must be unique within
-   * the current transaction (at least until we "commit" or roll back the
-   * savepoint, after which we can re-use it).
+   * Create a new savepoint.
+   *
+   * @param rootTransaction The root transaction, which generates unique savepoint names.
    */
-  constructor(id: number) {
+  constructor(rootTransaction: RealTransaction) {
     super();
-    this.id = id;
-    this.savepointName = identifier(`save_${id}`);
+    this.rootTransaction = rootTransaction;
+    this.id = rootTransaction.getUniqueSavepointId();
   }
 
   beginStatement(): RawSql {
-    return sql`savepoint ${this.savepointName}`;
+    return sql`savepoint ${this.id}`;
   }
 
   commitStatement(): RawSql {
-    return sql`release savepoint ${this.savepointName}`;
+    return sql`release savepoint ${this.id}`;
   }
 
   rollbackStatement(): RawSql {
-    return sql`rollback to savepoint ${this.savepointName}`;
+    return sql`rollback to savepoint ${this.id}`;
   }
 
   newChildTransaction(): Transaction {
-    return new Savepoint(this.id + 1);
+    return new Savepoint(this.rootTransaction);
   }
 }
