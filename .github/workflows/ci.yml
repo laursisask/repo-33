@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Start test database
-        # Start a database and Wait for it to listen to a port.
+        # Start a database and wait for it to listen to a port.
         # https://stackoverflow.com/a/52795933
         run: |
           set -euo pipefail
@@ -41,7 +41,6 @@ jobs:
             echo "==== Waiting for PostgreSQL"
             sleep 5
           done
-          sleep 15
       - name: Test
         run: env DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npm test
       - name: Check coverage
