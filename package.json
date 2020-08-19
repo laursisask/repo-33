@@ -1,8 +1,8 @@
 {
   "name": "@fdy/simple-postgres",
-  "version": "6.0.0-alpha.1",
+  "version": "6.0.0-alpha.2",
   "description": "a minimal postgres interface for node",
-  "main": "dist/sec/index.js",
+  "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "keywords": [
     "pg",
