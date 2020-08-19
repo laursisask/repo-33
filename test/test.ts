@@ -29,6 +29,16 @@ function destroyConnections(pool: Pool) {
   return (pool as any)._clients.map((c: pg.Client) => c.end());
 }
 
+/**
+ * Escape string for use in a regex.
+ *
+ * From
+ * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions#Escaping
+ */
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+\-?^${}()|[\]\\]/g, "\\$&"); // $& means the whole matched string
+}
+
 // test("cancel", async (t) => {
 //   let q = db.query("SELECT pg_sleep(10)");
 //   let err;
@@ -282,8 +292,13 @@ test("bad connection url", async (t) => {
     await db.configure("postgres://example").query("select 1");
     t.fail("should not be able to connect to postgres://example");
   } catch (err) {
-    t.equal(err.code, "ENOTFOUND", "incorrect host should throw ENOTFOUND");
-    if (err.code !== "ENOTFOUND") throw err;
+    t.match(
+      err.code,
+      // We see ENOTFOUND on regular Linux, and EAI_AGAIN under Docker.
+      /^ENOTFOUND|EAI_AGAIN$/,
+      "incorrect host should throw ENOTFOUND or EAI_AGAIN"
+    );
+    if (err.code !== "ENOTFOUND" && err.code !== "EAI_AGAIN") throw err;
   }
 });
 
@@ -352,9 +367,13 @@ test("error with notice", async (t) => {
     await db.query(sql);
     t.fail("should not be able to execute an invalid query");
   } catch (err) {
-    t.equal(
+    t.match(
       err.message,
-      `SQL Error: notice: notice\ninvalid input syntax for integer: "1.0"\n${sql}`
+      new RegExp(
+        `SQL Error: notice: notice\ninvalid input syntax for (type )?integer: "1.0"\n${escapeRegExp(
+          sql
+        )}`
+      )
     );
   }
 });
@@ -366,9 +385,13 @@ test("error with multiple notices", async (t) => {
     await db.query(sql);
     t.fail("should not be able to execute an invalid query");
   } catch (err) {
-    t.equal(
+    t.match(
       err.message,
-      `SQL Error: notice: notice\nnotice: warning\ninvalid input syntax for integer: "1.0"\n${sql}`
+      new RegExp(
+        `SQL Error: notice: notice\nnotice: warning\ninvalid input syntax for (type ?)integer: "1.0"\n${escapeRegExp(
+          sql
+        )}`
+      )
     );
   }
 });
