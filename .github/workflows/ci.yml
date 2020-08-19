@@ -48,5 +48,7 @@ jobs:
         run: env DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npm run cover
       - name: Lint
         run: npm run lint
+      - name: Audit
+        run: npm audit --production
       - name: Build
         run: npm run build
