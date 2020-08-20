@@ -536,3 +536,7 @@ test("escape and template functions are exported", async (t) => {
     );
   }
 });
+
+test("end shuts down the pool", async () => {
+  await db.end();
+});

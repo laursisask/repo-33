@@ -255,6 +255,13 @@ interface SimplePostgres extends Connection {
   pool(): Promise<pg.Pool>;
 
   /**
+   * Shut down our underlying connection pool.
+   *
+   * This is useful for cleaning up after running tests, or in a script.
+   */
+  end(): Promise<void>;
+
+  /**
    * Sets a callback for otherwise unhandled errors such as dropped
    * connections and other mysteries.
    */
@@ -758,6 +765,14 @@ export function configure(urlOrConfig?: string | Config): SimplePostgres {
     return _pool;
   }
 
+  async function end() {
+    if (_pool) {
+      const p = await _pool;
+      await p.end();
+      _pool = undefined;
+    }
+  }
+
   /** Fetch a connection from our pool. */
   async function connect(): Promise<PoolClientAndRelease> {
     type CustomClient = pg.PoolClient & { __simplePostgresOnError?: true };
@@ -789,6 +804,7 @@ export function configure(urlOrConfig?: string | Config): SimplePostgres {
 
     // Provide access to our pool and error handler.
     pool,
+    end,
     setErrorHandler,
 
     // These are mostly included here for reasons of backwards compatibility. It
