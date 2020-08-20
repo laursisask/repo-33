@@ -1,0 +1,22 @@
+# A test environment.
+#
+# You can invoke this using `docker-compose run test`.
+
+version: "3.3"
+services:
+  db:
+    image: postgres
+    ports:
+      - "5432"
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+  test:
+    image: node:lts
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://postgres@db:5432/postgres
+    working_dir: /src
+    volumes:
+      - .:/src
+    command: "npm run cover"
