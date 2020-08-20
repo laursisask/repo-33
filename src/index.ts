@@ -159,7 +159,7 @@ export interface Connection {
 }
 
 /** APIs for easily working with PostgreSQL. */
-interface SimplePostgres extends Connection {
+export interface SimplePostgres extends Connection {
   /**
    * Alias of db.escapeLiteral. Escape a value for safe use in SQL queries,
    * returning a string.
