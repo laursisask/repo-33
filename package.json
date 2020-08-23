@@ -34,7 +34,8 @@
     "fmt": "prettier --write .",
     "lint": "eslint src/**/*.ts test/**/*.ts",
     "prepublish": "rm -rf dist && npm run build",
-    "test": "NODE_ENV=test ts-node test/test.ts",
+    "test-helper": "NODE_ENV=test ts-node test/test.ts",
+    "test": "docker-compose run test",
     "cover": "npm run build && NODE_ENV=test c8 -x dist/test/ --check-coverage --lines=98 -r text -r html node dist/test/test.js"
   },
   "devDependencies": {
