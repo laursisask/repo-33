@@ -185,6 +185,66 @@ test("escaping", async (t) => {
   t.equal(db.escapeIdentifiers(["a", "b"]), '"a", "b"');
 });
 
+test("escaping dates", async (t) => {
+  await db.connection(async (db) => {
+    db.query`
+      DROP TABLE IF EXISTS date_tests;
+  
+      CREATE TABLE date_tests (
+        id INT NOT NULL,
+        twotz TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+        twtz TIMESTAMP WITH TIME ZONE NOT NULL,
+        d DATE NOT NULL
+      );
+    `;
+    const dates = [
+      new Date(),
+      new Date("2020-08-25"),
+      new Date("2020-08-25T17:42:36"),
+      new Date("2020-08-25T17:42:36Z"),
+      new Date("2020-08-25T17:42:36+00:00"),
+      new Date("2020-08-25T23:00:00-05:00"),
+    ];
+    for (let i = 0; i < dates.length; ++i) {
+      const d = dates[i];
+      t.equal(
+        escapeLiteral(d),
+        escapeLiteral(d.toISOString()),
+        `escapeLiteral ${d.toISOString()}`
+      );
+
+      // Be careful to use `template` here, to make sure we do the escaping, not
+      // the `pg` module.
+      const tmpl = template`
+        INSERT INTO date_tests
+        VALUES (${i}, ${d}, ${d}, ${d});
+      `;
+      await db.query(tmpl);
+
+      // Make sure we get the expected values back from the database.
+      const r = await db.row<{ twotz: Date; twtz: Date; d: Date }>`
+        SELECT twotz,twtz,d FROM date_tests WHERE id = ${i}
+      `;
+      assert(r != null, "query result should match");
+      t.equal(
+        r.twotz.toISOString(),
+        new Date(d.toISOString().replace(/Z|\+.*/, "")).toISOString(),
+        `TIMESTAMP WITHOUT TIME ZONE for ${d.toISOString()}`
+      );
+      t.equal(
+        r.twotz.toISOString(),
+        d.toISOString(),
+        `TIMESTAMP WITH TIME ZONE for ${d.toISOString()}`
+      );
+      t.equal(
+        r.d.toISOString(),
+        new Date(d.toISOString().replace(/T.*/, "")).toISOString(),
+        `DATE for ${d.toISOString()}`
+      );
+    }
+  });
+});
+
 test("identifier escaping", async (t) => {
   t.equal(db.escapeIdentifier('weird " ?'), '"weird "" ?"');
 });

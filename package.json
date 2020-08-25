@@ -1,6 +1,6 @@
 {
   "name": "@fdy/simple-postgres",
-  "version": "6.0.0-beta.3",
+  "version": "6.0.0-beta.4",
   "description": "a minimal postgres interface for node",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -33,7 +33,7 @@
     "build": "tsc",
     "fmt": "prettier --write .",
     "lint": "eslint src/**/*.ts test/**/*.ts",
-    "prepublish": "rm -rf dist && npm run build",
+    "prepublishOnly": "rm -rf dist && npm run build",
     "test-helper": "NODE_ENV=test ts-node test/test.ts",
     "test": "docker-compose run test",
     "cover": "npm run build && NODE_ENV=test c8 -x dist/test/ --check-coverage --lines=98 -r text -r html node dist/test/test.js"

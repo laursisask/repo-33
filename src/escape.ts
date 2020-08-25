@@ -37,7 +37,7 @@ export function escapeIdentifiers(
 /**
  * A literal value which can be escaped as valid SQL.
  */
-export type Literal = string | number | boolean | null | Literal[];
+export type Literal = string | number | boolean | Date | null | Literal[];
 
 /**
  * Escape a value for safe use in SQL queries, returning a string.
@@ -56,6 +56,9 @@ export function escapeLiteral(str: Literal): string {
     return "false";
   } else if (Array.isArray(str)) {
     return "Array[" + str.map(escapeLiteral).join(", ") + "]";
+  } else if (str instanceof Date) {
+    // Convert dates to ISO 8601 strings then process normally.
+    str = str.toISOString();
   }
 
   let hasBackslash = false;
