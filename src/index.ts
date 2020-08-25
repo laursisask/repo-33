@@ -167,7 +167,7 @@ export interface SimplePostgres extends Connection {
    * While this function is tested and probably secure, you should avoid using
    * it. Instead, use bind vars, as they are much more difficult to mess up.
    */
-  escape(value: Literal): string | number | null;
+  escape(value: Literal): string;
 
   /**
    * Escape a value for safe use in SQL queries, returning a string.
@@ -175,7 +175,7 @@ export interface SimplePostgres extends Connection {
    * While this function is tested and probably secure, you should avoid using
    * it. Instead, use bind vars, as they are much more difficult to mess up.
    */
-  escapeLiteral(value: Literal): string | number | null;
+  escapeLiteral(value: Literal): string;
 
   /**
    * Escape `literals` using `separator`. Defaults to `", "`.
