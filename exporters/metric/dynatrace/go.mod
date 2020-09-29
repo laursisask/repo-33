@@ -1,4 +1,4 @@
-module github.com/dynatrace-oss-contrib/opentelemetry-go-contrib/exporters/metric/dynatracee
+module github.com/dynatrace-oss-contrib/opentelemetry-go-contrib/exporters/metric/dynatrace
 
 go 1.14
 
