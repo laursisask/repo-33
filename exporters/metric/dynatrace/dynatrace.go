@@ -114,6 +114,8 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 				return fmt.Errorf("error getting LastValue for %s: %w", name, err)
 			}
 
+			fmt.Println(val.AsInt64Atomic())
+			
 			value := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), val), 'f', 6, 64)
 			valueline := ""
 
