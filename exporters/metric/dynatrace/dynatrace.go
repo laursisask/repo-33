@@ -115,14 +115,14 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 			}
 
 			fmt.Println(val.AsInt64Atomic())
-			
+
 			value := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), val), 'f', 6, 64)
 			valueline := ""
 
 			// fmt.Println(r.Descriptor().MetricKind())
 			switch r.Descriptor().MetricKind() {
 			case metric.CounterKind, metric.SumObserverKind, metric.ValueRecorderKind:
-				valueline = "count," + value
+				valueline = "count,delta=" + value
 			case metric.UpDownCounterKind, metric.UpDownSumObserverKind:
 				valueline = value
 			}
