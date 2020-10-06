@@ -86,6 +86,8 @@ func (e *Exporter) ExportKindFor(*metric.Descriptor, aggregation.Kind) export.Ex
 
 func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 	output := ""
+	valueline := ""
+
 	err := cs.ForEach(e, func(r export.Record) error {
 		agg := r.Aggregation()
 
@@ -100,6 +102,7 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 			tags = append(tags, tag)
 		}
 		var tagline string
+
 		for _, tag := range tags {
 			if tagline != "" {
 				tagline += ","
@@ -117,7 +120,6 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 			fmt.Println(val.AsInt64Atomic())
 
 			value := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), val), 'f', 6, 64)
-			valueline := ""
 
 			// fmt.Println(r.Descriptor().MetricKind())
 			switch r.Descriptor().MetricKind() {
@@ -128,15 +130,43 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 			}
 			// fmt.Println(name + " " + tagline + " " + valueline)
 
-			if tagline != "" {
-				name = name + ","
+		case aggregation.MinMaxSumCount:
+			minVal, err := agg.Min()
+			if err != nil {
+				return fmt.Errorf("error getting min for %s: %w", name, err)
 			}
+			minValue := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), minVal), 'f', 6, 64)
 
-			if output != "" {
-				output = output + "\n"
+			maxVal, err := agg.Max()
+			if err != nil {
+				return fmt.Errorf("error getting max for %s: %w", name, err)
 			}
-			output += name + tagline + " " + valueline
+			maxValue := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), maxVal), 'f', 6, 64)
+
+			sumVal, err := agg.Sum()
+			if err != nil {
+				return fmt.Errorf("error getting sum for %s: %w", name, err)
+			}
+			sumValue := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), sumVal), 'f', 6, 64)
+
+			countVal, err := agg.Count()
+			if err != nil {
+				return fmt.Errorf("error getting count for %s: %w", name, err)
+			}
+			countValue := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), metric.Number(countVal)), 'f', 6, 64)
+
+			valueline = "gauge,min=" + minValue + ",max=" + maxValue + ",sum=" + sumValue + ",count=" + countValue
 		}
+
+		if tagline != "" {
+			name = name + ","
+		}
+
+		if output != "" {
+			output = output + "\n"
+		}
+		output += name + tagline + " " + valueline
+
 		return nil
 	})
 	if err != nil {
