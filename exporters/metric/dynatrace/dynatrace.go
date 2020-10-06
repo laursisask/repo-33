@@ -135,8 +135,8 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 			if err != nil {
 				return fmt.Errorf("error getting count for %s: %w", name, err)
 			}
-			countValue := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), metric.Number(countVal)), 'f', 6, 64)
 
+			countValue := strconv.FormatInt(countVal, 10)
 			valueline = "gauge,min=" + minValue + ",max=" + maxValue + ",sum=" + sumValue + ",count=" + countValue
 
 		case aggregation.Sum:
