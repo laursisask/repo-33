@@ -112,25 +112,22 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 		fmt.Println(agg.Kind().String())
 
 		switch agg := agg.(type) {
-
 		case aggregation.Sum:
+			fmt.Println(agg)
 			val, err := agg.Sum()
 			if err != nil {
 				return fmt.Errorf("error getting LastValue for %s: %w", name, err)
 			}
 
-			fmt.Println(val.AsInt64Atomic())
-
 			value := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), val), 'f', 6, 64)
 
 			// fmt.Println(r.Descriptor().MetricKind())
 			switch r.Descriptor().MetricKind() {
-			case metric.CounterKind, metric.SumObserverKind, metric.ValueRecorderKind:
+			case metric.CounterKind, metric.SumObserverKind:
 				valueline = "count,delta=" + value
 			case metric.UpDownCounterKind, metric.UpDownSumObserverKind:
 				valueline = value
 			}
-			// fmt.Println(name + " " + tagline + " " + valueline)
 
 		case aggregation.MinMaxSumCount:
 			minVal, err := agg.Min()
