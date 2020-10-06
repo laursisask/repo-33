@@ -111,29 +111,7 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 		}
 		fmt.Println(agg.Kind().String())
 
-		if _, ok := agg.(aggregation.Sum); ok {
-			fmt.Println("Is a Summary")
-		} else if _, ok := agg.(aggregation.MinMaxSumCount); ok {
-			fmt.Println("Is a MinMaxSumCount")
-		}
-
 		switch agg := agg.(type) {
-		case aggregation.Sum:
-			val, err := agg.Sum()
-			if err != nil {
-				return fmt.Errorf("error getting LastValue for %s: %w", name, err)
-			}
-
-			value := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), val), 'f', 6, 64)
-
-			// fmt.Println(r.Descriptor().MetricKind())
-			switch r.Descriptor().MetricKind() {
-			case metric.CounterKind, metric.SumObserverKind:
-				valueline = "count,delta=" + value
-			case metric.UpDownCounterKind, metric.UpDownSumObserverKind:
-				valueline = value
-			}
-
 		case aggregation.MinMaxSumCount:
 			minVal, err := agg.Min()
 			if err != nil {
@@ -160,8 +138,23 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 			countValue := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), metric.Number(countVal)), 'f', 6, 64)
 
 			valueline = "gauge,min=" + minValue + ",max=" + maxValue + ",sum=" + sumValue + ",count=" + countValue
-		}
 
+		case aggregation.Sum:
+			val, err := agg.Sum()
+			if err != nil {
+				return fmt.Errorf("error getting LastValue for %s: %w", name, err)
+			}
+
+			value := strconv.FormatFloat(normalizeMetricValue(r.Descriptor().NumberKind(), val), 'f', 6, 64)
+
+			// fmt.Println(r.Descriptor().MetricKind())
+			switch r.Descriptor().MetricKind() {
+			case metric.CounterKind, metric.SumObserverKind:
+				valueline = "count,delta=" + value
+			case metric.UpDownCounterKind, metric.UpDownSumObserverKind:
+				valueline = value
+			}
+		}
 		if tagline != "" {
 			name = name + ","
 		}
