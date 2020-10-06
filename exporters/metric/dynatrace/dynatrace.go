@@ -111,9 +111,14 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 		}
 		fmt.Println(agg.Kind().String())
 
+		if _, ok := agg.(aggregation.Sum); ok {
+			fmt.Println("Is a Summary")
+		} else if _, ok := agg.(aggregation.MinMaxSumCount); ok {
+			fmt.Println("Is a MinMaxSumCount")
+		}
+
 		switch agg := agg.(type) {
 		case aggregation.Sum:
-			fmt.Println(agg)
 			val, err := agg.Sum()
 			if err != nil {
 				return fmt.Errorf("error getting LastValue for %s: %w", name, err)
