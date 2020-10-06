@@ -109,6 +109,8 @@ func (e *Exporter) Export(ctx context.Context, cs export.CheckpointSet) error {
 			}
 			tagline += tag
 		}
+		fmt.Println(agg.Kind().String())
+
 		switch agg := agg.(type) {
 
 		case aggregation.Sum:
