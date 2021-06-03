@@ -1,15 +1,15 @@
-import { RawSql, identifier, template as sql } from "./templating";
+import { Template, template, identifier } from "selectstar";
 
 /** Abstract interface to a transaction. */
 export abstract class Transaction {
   /** SQL to begin this transaction. */
-  abstract beginStatement(): RawSql;
+  abstract beginStatement(): Template;
 
   /** SQL to end this transaction. */
-  abstract commitStatement(): RawSql;
+  abstract commitStatement(): Template;
 
   /** SQL to roll back this transaction. */
-  abstract rollbackStatement(): RawSql;
+  abstract rollbackStatement(): Template;
 
   /** Create a nested transaction. */
   abstract newChildTransaction(): Transaction;
@@ -25,16 +25,16 @@ export class RealTransaction extends Transaction {
     this.nextSavepointNumber = 0;
   }
 
-  beginStatement(): RawSql {
-    return sql`begin`;
+  beginStatement(): Template {
+    return template`begin`;
   }
 
-  commitStatement(): RawSql {
-    return sql`commit`;
+  commitStatement(): Template {
+    return template`commit`;
   }
 
-  rollbackStatement(): RawSql {
-    return sql`rollback`;
+  rollbackStatement(): Template {
+    return template`rollback`;
   }
 
   newChildTransaction(): Transaction {
@@ -45,10 +45,10 @@ export class RealTransaction extends Transaction {
    * Returns an SQL identifier for a savepoint which is unique in this
    * transaction.
    */
-  getUniqueSavepointId(): RawSql {
+  getUniqueSavepointId(): Template {
     const ident = identifier(`save_${this.nextSavepointNumber}`);
     this.nextSavepointNumber += 1;
-    return ident;
+    return template`${ident}`;
   }
 }
 
@@ -64,7 +64,7 @@ export class Savepoint extends Transaction {
   private rootTransaction: RealTransaction;
 
   /** A unique identifier for this savepoint within the current transaction. */
-  private id: RawSql;
+  private id: Template;
 
   /**
    * Create a new savepoint.
@@ -77,16 +77,16 @@ export class Savepoint extends Transaction {
     this.id = rootTransaction.getUniqueSavepointId();
   }
 
-  beginStatement(): RawSql {
-    return sql`savepoint ${this.id}`;
+  beginStatement(): Template {
+    return template`savepoint ${this.id}`;
   }
 
-  commitStatement(): RawSql {
-    return sql`release savepoint ${this.id}`;
+  commitStatement(): Template {
+    return template`release savepoint ${this.id}`;
   }
 
-  rollbackStatement(): RawSql {
-    return sql`rollback to savepoint ${this.id}`;
+  rollbackStatement(): Template {
+    return template`rollback to savepoint ${this.id}`;
   }
 
   newChildTransaction(): Transaction {

@@ -1,26 +1,23 @@
 # simple-postgres
 
-simple-postgres is a small and powerful PostgreSQL interface for Node.js
+A minimalist layer for interacting with Postgres databases using Javascript
+tagged literals (provided via [selectstar]), and returning Javascript values
+quickly from idiomatic queries.
 
-Replace all of your database boilerplate with `import db from 'simple-postgres'`
-and never look back.
-
-### Getting started
+## Getting started
 
 ```console
-npm install simple-postgres
+npm install @fdy/simple-postgres
 ```
 
-```js
+```ts
 import db from "simple-postgres";
 
-let accountName = "ACME'; DELETE FROM accounts; --";
+// Unsafe user input:
+const accountName = "ACME'; DELETE FROM accounts; --";
 
-// this is totally safe
-await db.query("INSERT INTO accounts (name) VALUES ($1)", [accountName]);
-
-// this is also totally safe
-let account = await db.row`
+// But this is totally safe:
+const account = await db.row`
   SELECT *
   FROM accounts
   WHERE name = ${accountName}
@@ -29,350 +26,135 @@ let account = await db.row`
 console.log(account.name); // => 'ACME\'; DELETE FROM accounts; --'
 ```
 
-### Why?
+## Writing queries
 
-Many other postgres modules are bad. This one is good. Here's why:
+Simple Postgres uses [selectstar] to handle query generation. Queries can be
+constructed as a tagged literal, or generated with the `sql` function:
 
-#### simple-postgres has everything you need
+```ts
+import db, { sql } from 'simple-postgres'; // sql is a passthrough from selectstar
 
-- connects using the DATABASE_URL environment variable
-- runs queries and returns the results
-- automatic query parameterization
-- escaping literals, identifiers, arrays
-- transactions, including nested "transactions" using savepoints
-- async/await ready
-- sets application_name using package.json
-- good test coverage
-- accurate TypeScript declarations (optional)
-- trusted in production by my boss who trusts nothing
+async function findStarshipByName(name: string): Promise<Starship> {
+  const starships = await db.query<Starship>`
+    SELECT id, name, mass
+    FROM starships
+    WHERE name ILIKE ${'%' + name + '%'}
+  `;
 
-#### simple-postgres doesn't have anything you don't need
+  return starships.rows;
+}
 
-- no ORM
-- no query builder
-- no connect function
-- no disconnect function
-- no connection pool manager
-- no configuration
-- no initialization
-- no callbacks
+// alternatively:
+async function findPilotsByName(name: string): Promise<Pilot> {
+  const query = sql`SELECT id, name FROM pilots WHERE name ILIKE ${'%' + name + '%'}`
 
-### API
+  // Use the pre-defined query instead of a tagged literal:
+  const pilots = await db.query<Pilot>(query);
 
-#### db.query(sql, params = [])
-
-run a query
-
-returns a promise, which resolves with a pg [Result](https://node-postgres.com/api/result) object
-
-This is best for INSERT/UPDATE/DELETE/etc queries which will not return any rows. If you are doing a SELECT, you probably want one of the functions below.
-
-```js
-let result = await db.query("UPDATE accounts SET enabled = true");
-console.log(result.command + " " + result.rowCount); // => UPDATE 2
-```
-
-#### db.rows(sql, params = [])
-
-run a query
-
-returns a promise, which resolves with an array of row objects
-
-```js
-let accounts = await db.rows("SELECT * FROM accounts");
-for (let account of accounts) {
-  console.log(account.id + ": " + account.name); // => "1: ACME"
+  return pilots.rows;
 }
 ```
 
-#### db.row(sql, params = [])
+## Usage
 
-run a query
+Simple Postgres offers a collection of query shorthands that make it easier
+to handle the response value from Postgres:
 
-returns a promise, which resolves with the first row object
+* `db.query` is a passthrough to node-pg's query method
+* `db.rows` returns only the rows from a query
+* `db.row` returns only the first row from a query
+* `db.column` returns only the first column from a query
+* `db.value` returns only the first column from the first row of the query
 
-This will **not** automatically add `LIMIT 1` to the end of the query.
+There are also some tools to make transactions and streams easier to handle:
 
-```js
-let account = await db.row("SELECT * FROM accounts WHERE id = 1");
-console.log(account.name); // => "ACME"
-```
+### `db.connection` runs many queries with the same connection
 
-#### db.value(sql, params = [])
+If your database has a lot of contention for connections, it can sometimes be
+useful to hold a single connection for a while to service a single request or
+set of queries. Usually this isn't necessary, though transactions are
+implicitly carried out on the same connection.
 
-run a query
+```ts
+import db from '@fdy/simple-postgres';
 
-returns a promise, which resolves with the first column of the first row
+const userAndAccountInfo = await db.connection(async conn => {
+  const user = await conn.row`SELECT id, name, account_id FROM users WHERE id = ${userId}`;
+  const account = await conn.row`SELECT id, name FROM accounts WHERE id = ${user.account_id}`;
 
-This is useful for things like counts.
-
-```js
-let accountName = await db.value("SELECT name FROM accounts WHERE id = 1");
-console.log(accountName); // => "ACME"
-```
-
-#### db.column(sql, params = [])
-
-run a query
-
-returns a promise, which resolves with an array of the first values in each row
-
-Example:
-
-```js
-let oneThroughFive = await db.column("SELECT * FROM generate_series(1, 5)");
-console.log(oneThroughFive); // => [1, 2, 3, 4, 5]
-```
-
-#### template string mode
-
-Any of the above functions can be used with template string literals to make
-long queries more readable. Interpolated values will be moved to the `params`
-array and replaced with $1, $2, etc.
-
-Example:
-
-```js
-let type = "pancake";
-// the following two calls are identical:
-db.value`
-  SELECT COUNT(*)
-  FROM breakfast
-  WHERE type = ${type}
-`;
-db.value("SELECT COUNT(*) FROM breakfast WHERE type = $1", [type]);
-```
-
-**Do not use parentheses around your
-template string or you will open yourself up to SQL injection attacks and you
-will have a bad day.**
-
-```js
-let type = "pancake '; DELETE FROM accounts; --";
-// NOTE THE PARENTHESES AROUND THE BACKTICKS - DO NOT DO THIS
-db.value(`
-  SELECT COUNT(*)
-  FROM breakfast
-  WHERE type = ${type}
-`);
-```
-
-If you need to interpolate an identifier such as a table name, the normal
-escaping will wrap your value in single quotes. Use the `db.identifier` function
-instead.
-
-Example:
-
-```js
-let table = "breakfast";
-let type = "pancake";
-
-db.value`
-  SELECT COUNT(*)
-  FROM ${db.identifier(table)}
-  WHERE type = ${type}
-`;
-```
-
-#### db.template\`SELECT \${a}...\`
-
-Prepare a statement for later execution. This is good for testing functions that
-dynamically generate SQL.
-
-```js
-let accountName = "ACME";
-let tableName = "users";
-
-let subquery = db.template`
-  SELECT id
-  FROM accounts
-  WHERE name = ${accountName}
-`;
-let query = db.template`
-  SELECT a, b
-  FROM ${db.identifier(tableName)}
-  WHERE account_id IN (${subquery})
-`;
-
-let results = await db.rows(query);
-// [{a: , b: }, {a: , b: }, ...]
-
-let rawSql = query.__unsafelyGetRawSql();
-// SELECT a, b FROM "users" WHERE account_id IN (SELECT id FROM accounts WHERE name='ACME')
-```
-
-#### db.transaction(block)
-
-perform a [database transaction](https://www.postgresql.org/docs/current/static/tutorial-transactions.html)
-
-**block**: should be a function which will perform work inside the transaction and return a promise. If the promise rejects, the transaction will be rolled back.
-
-returns a promise, which should resolve with the return value of **block** or reject if the transaction failed
-
-Example:
-
-```js
-// process one order
-db.transaction(async function (trx) {
-  let orderId = await trx.value(
-    "SELECT id FROM orders WHERE NOT shipped LIMIT 1 FOR UPDATE"
-  );
-
-  await db.query("INSERT INTO shipments (order_id) VALUES ($1)", [orderId]);
-
-  // if this update fails, the above insert will be rolled back!
-  await db.query("UPDATE orders SET fulfilled = true WHERE id = $1", [orderId]);
-
-  return orderId;
+  return { user, account };
 });
 ```
 
-#### db.connection(block)
+### `db.transaction` starts a transaction (or nested savepoint)
 
-perform multiple queries sequentially on a single connection
+Starts a [database transaction] and runs the contained queries within that
+transaction. If the block of work throws an error for any reason, the
+transaction is rolled back. Nested transactions use [savepoints] to allow
+partial rollbacks.
 
-**block**: should be a function which will perform work inside the connection
-and return a promise. When the promise resolves or rejects, the connection will
-be returned to the pool.
+```ts
+const newUser = await db.transaction(async tx => {
+  const userId = await tx.value`
+    INSERT INTO users (id, name)
+    VALUES (uuid_generate_v4(), ${userName})
+    RETURNING id
+  `;
+  
+  const accountId = await tx.value`
+    INSERT INTO accounts (id, name, owner_id)
+    VALUES (uuid_generate_v4(), ${accountName}, ${userId})
+  `;
 
-Example:
-
-```js
-let cookies = await db.connection(async function ({ query, value }) {
-  // count the number of cookies, or timeout if it takes more than a minute
-  await query("SET statement_timeout=60000");
-  return value("SELECT COUNT(*) FROM cookies");
+  await db.query`UPDATE users SET account_id = ${accountId}`;
+  
+  return db.row`SELECT * FROM users WHERE id = ${userId}`;
 });
 ```
 
-#### Query cancellation
+### `db.stream` starts a query stream (using `pg-query-stream`)
 
-The promises returned by `db.query`, `db.rows`, etc all have a `cancel` method
-which will kill the query on the backend.
+Performing operations across very large datasets can exceed the amount of
+memory available to Node. It can also put strain on the database that might be
+avoided with an incremental loading approach. `db.stream` uses the optional
+`pg-query-stream` dependency to create a Node [`ReadableStream`] to pull
+records out of the database.
 
-Example:
+This is very useful for ETL jobs or complex calculations that require very
+large datasets, or operating in memory-constrained environments. 
 
-```js
-let query = db.query("SELECT COUNT(*) FROM slow_table");
+```ts
+import { format } from '@fast-csv/format';
 
-query.catch((err) => {
-  if (err instanceof db.Cancel) {
-    console.log("query cancelled");
-  } else {
-    console.error("unexpected error", err);
-  }
-});
+const csvStream = format({ headers: true });
+const users = await db.stream<User>`SELECT * FROM users`;
 
-q.cancel().then(() => console.log("cancel resolved"));
-
-// STDOUT:
-// query cancelled
-// cancel resolved
+// Pipe users from the database to stdout, but as csv:
+users.pipe(csvStream).pipe(process.stdout).on('end', () => process.exit());
 ```
 
-An obscure note about cancellation: `db.connection` and `db.transaction` do not
-have `.cancel()` methods, although you can cancel individual queries you run
-within them.
+Remember: To use `db.stream` you must install the optional dependency
+`pg-query-stream`.
 
-#### db.escape(value)
+### Rationale
 
-_alias of db.escapeLiteral_
+Simple Postgres attempts to be a low-abstraction interface layer with your
+Postgres database. While high-level abstractions over SQL databases have their
+places, very often they require making large sacrifices of simplicity to gain
+some ease-of-use.
 
-escape a value for safe use in SQL queries, returns string
+Simple Postgres is, in the common case, completely configuration-free. Just
+import the `db` interface and start writing queries. This allows small projects
+to spend more time writing self-evident queries than in complex database
+configuration required by other interface libraries, or ORMs.
 
-While this function is tested and probably secure, you should avoid using it.
-Instead, use bind vars, as they are much more difficult to mess up.
+Further, many libraries offer an abstraction over the actual SQL language,
+which means that some advanced features are either difficult to access, or are
+completely disallowed. Writing queries in Simple Postgres is the same as 
+evaluating SQL queries in the query console: everything that the database can
+execute can be represented in this library.
 
-#### db.escapeIdentifier(value)
-
-escape a value for safe use as an identifier in SQL queries, returns string
-
-Same as the above function, except for things like table names, column names,
-etc.
-
-#### db.escapeLiterals(values, separator = ', ')
-
-escape an array of literals and join them with the given separator, returns string
-
-```js
-db.escapeLiterals(["a", "b", "c"]) === "'a', 'b', 'c'";
-```
-
-#### db.escapeIdentifiers(values, separator = ', ')
-
-escape an array of identifiers and join them with the given separator, returns string
-
-```js
-db.escapeIdentifiers(["a", "b", "c"]) === '"a", "b", "c"';
-```
-
-#### db.identifier(value)
-
-escapes an identifier in such a way that it can be passed safely into a template
-query, returns object
-
-Below, note the lack of parentheses around the SQL, with db.query being called
-as a template function.
-
-```js
-let tableName = 'potentially "dangerous" table name';
-db.query`
-  SELECT * FROM ${db.identifier(tableName)}
-`;
-```
-
-#### db.identifiers(values, separator = ', ')
-
-escapes multiple identifiers in such a way that they can be passed safely into a
-template query, returns object
-
-```js
-let columns = ["id", "name"];
-db.query`
-  SELECT ${db.identifiers(columns)} FROM accounts
-`;
-```
-
-#### db.literals(values, separator = ', ')
-
-escapes multiple literals in such a way that they can be passed safely into a
-template query, returns object
-
-```js
-let accounts = [1, 2, 3];
-db.query`
-  SELECT id FROM accounts WHERE name IN(${db.literals(accounts)})
-`;
-```
-
-#### db.items(values, separator = ', ')
-
-escapes multiple items in such a way that they can be passed safely into a
-template query, returns object. Escapes literals by default, but allows identifiers
-and templates.
-
-```js
-let defaultTitle = "untitled";
-let select = [
-  "test string",
-  db.identifier("id"),
-  db.template`COALESCE(title, ${defaultTitle}) AS title`,
-];
-
-let books = await db.rows`
-  SELECT ${db.items(select)}
-  FROM books
-`;
-/*
-SELECT 'test string', "id", COALESCE(title, 'untitled') AS title
-FROM books
-*/
-```
-
-#### db.setErrorHandler(callback)
-
-sets a callback for otherwise unhandled errors such as dropped connections and other mysteries
-
-### Contributing
-
-Please send pull requests!
+[selectstar]: https://github.com/faradayio/selectstar
+[database transaction]: (https://www.postgresql.org/docs/current/static/tutorial-transactions.html)
+[savepoints]: (https://www.postgresql.org/docs/8.1/sql-savepoint.html)
+[`ReadableStream`]: (https://nodejs.org/api/stream.html#stream_readable_streams)
