@@ -1,6 +1,6 @@
 {
   "name": "@fdy/simple-postgres",
-  "version": "7.0.1",
+  "version": "7.0.2",
   "description": "a minimal postgres interface for node",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -28,7 +28,7 @@
     "find-root": "^1.1.0",
     "pg": "^8.3.2",
     "pg-connection-string": "^2.3.0",
-    "selectstar": "^1.1.9"
+    "selectstar": "^1.1.11"
   },
   "repository": {
     "type": "git",
