@@ -7,14 +7,22 @@ An example showing the use of CHIP on the Silicon Labs EFR32 MG12.
 -   [CHIP EFR32 Light Switch Example](#chip-efr32-light-switch-example)
     -   [Introduction](#introduction)
     -   [Building](#building)
-        -   [Note](#note)
+        -   [Linux](#linux)
+        -   [Mac OS X](#mac-os-x)
     -   [Flashing the Application](#flashing-the-application)
     -   [Viewing Logging Output](#viewing-logging-output)
     -   [Running the Complete Example](#running-the-complete-example)
         -   [Notes](#notes)
+            -   [On Border Router:](#on-border-router)
+            -   [On PC(Linux):](#on-pclinux)
     -   [Running RPC console](#running-rpc-console)
     -   [Memory settings](#memory-settings)
     -   [OTA Software Update](#ota-software-update)
+    -   [Building options](#building-options)
+        -   [Disabling logging](#disabling-logging)
+        -   [Debug build / release build](#debug-build--release-build)
+        -   [Disabling LCD](#disabling-lcd)
+        -   [KVS maximum entry count](#kvs-maximum-entry-count)
 
 <hr>
 
@@ -253,14 +261,28 @@ combination with JLinkRTTClient as follows:
 
     **Push Button 0**
 
-        -   _Press and Release_ : Start, or restart, BLE advertisement in fast mode. It will advertise in this mode
-            for 30 seconds. The device will then switch to a slower interval advertisement.
-            After 15 minutes, the advertisement stops.
+        -   _Press and Release_ :
 
-        -   _Pressed and hold for 6 s_ : Initiates the factory reset of the device.
-            Releasing the button within the 6-second window cancels the factory reset
-            procedure. **LEDs** blink in unison when the factory reset procedure is
-            initiated.
+            -   Decreases temperature by 0.01C depending on current mode.
+
+            -   Start, or restart, BLE advertisement in fast mode. It will advertise
+                in this mode for 30 seconds. The device will then switch to a
+                slower interval advertisement.
+                After 15 minutes, the advertisement stops.
+
+        -   _Pressed and hold for 6.5 s_ : Initiates the factory reset of the device.
+            Releasing button within the 0.5-second window cancels initiation of factory
+            reset.
+            Releasing the button within the 6-second window post that cancels the
+            factory reset procedure. **LEDs** blink in unison when the factory reset
+            procedure is initiated.
+
+    **Push Button 1**
+
+        -   _Press and Release_ : Increases temperature by 0.01C depending on current
+            mode.
+
+        -   _Pressed and hold for 1 s_ : Toggles the mode of the thermostat.
 
 *   You can provision and control the Chip device using the python controller,
     [CHIPTool](https://github.com/project-chip/connectedhomeip/blob/master/examples/chip-tool/README.md)

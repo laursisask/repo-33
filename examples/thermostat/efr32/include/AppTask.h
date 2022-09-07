@@ -93,6 +93,15 @@ public:
      */
     static void OnIdentifyStop(Identify * identify);
 
+    enum ThermoFunction_t
+    {
+        kFunction_Nothing   = 0,
+        kFunction_AppFn     = 1,
+        kFunction_Temp      = 2,
+
+        kFunction_Invalid
+    } ThermoFunction;
+
 private:
     static AppTask sAppTask;
 
@@ -113,10 +122,65 @@ private:
     static void ButtonHandler(AppEvent * aEvent);
 
     /**
-     * @brief PB1 Button event processing function
-     *        Function triggers a thermostat action sent to the CHIP task
+     * @brief Function called to start the mode timer
      *
-     * @param aEvent button event being processed
+     * @param aTimeoutMs timer duration in ms
      */
-    static void ThermostatActionEventHandler(AppEvent * aEvent);
+    static void StartModeTimer(uint32_t aTimeoutInMs);
+
+    /**
+     * @brief Function to stop the mode timer
+     */
+    static void CancelModeTimer();
+
+    /**
+     * @brief Function called to start the app function timer
+     *
+     * @param aTimeoutMs timer duration in ms
+     */
+    static void StartAppFnTimer(uint32_t aTimeoutInMs);
+
+    /**
+     * @brief Function to stop app function timer
+     */
+    static void CancelAppFnTimer();
+
+    /**
+     * @brief Mode Timer finished callback function
+     *        Post an ModeHandler event
+     *
+     * @param xTimer timer that finished
+     */
+    static void ModeTimerEventHandler(TimerHandle_t xTimer);
+    
+    /**
+     * @brief App Function Timer finished callback function
+     *        Post an AppFnHandler event
+     *
+     * @param xTimer timer that finished
+     */
+    static void AppFnTimerEventHandler(TimerHandle_t xTimer);
+
+    /**
+     * @brief Mode Timer Event processing function
+     *        Handles toggling the mode
+     *
+     * @param aEvent post event being processed
+     */
+    static void ModeHandler(AppEvent * aEvent);
+    
+    /**
+     * @brief App Function Timer Event processing function
+     *        Calls factory reset handler from BaseApplication.cpp
+     *
+     * @param aEvent post event being processed
+     */
+    static void AppFnHandler(AppEvent * aEvent);
+
+    /**
+     * @brief Handles temperature changes depending on timer status
+     *
+     * @param aEvent post event being processed
+     */
+    static void TemperatureHandler(AppEvent * aEvent);
 };
