@@ -1,11 +1,11 @@
-# CHIP EFR32 Light Switch Example
+# Matter EFR32 Thermostat Example
 
-An example showing the use of CHIP on the Silicon Labs EFR32 MG12.
+An example showing the use of Matter on the Silicon Labs EFR32 MG12 and MG24.
 
 <hr>
 
--   [CHIP EFR32 Light Switch Example](#chip-efr32-light-switch-example)
-    -   [Introduction](#introduction)
+-   Matter EFR32 Thermostat Example
+    -   [Introduction](#intro)
     -   [Building](#building)
         -   [Linux](#linux)
         -   [Mac OS X](#mac-os-x)
@@ -30,20 +30,20 @@ An example showing the use of CHIP on the Silicon Labs EFR32 MG12.
 
 ## Introduction
 
-The EFR32 light switch example provides a baseline demonstration of a on-off
-light switch device, built using CHIP and the Silicon Labs gecko SDK. It can be
-controlled by a Chip controller over Openthread network.
+The EFR32 thermostat example provides a baseline demonstration of a thermostat
+device, built using Matter and the Silicon Labs gecko SDK. It can be controlled
+by a Matter controller over OpenThread network.
 
 The EFR32 device can be commissioned over Bluetooth Low Energy where the device
-and the Chip controller will exchange security information with the Rendez-vous
-procedure. Thread Network credentials are then provided to the EFR32 device
-which will then join the network.
+and the Matter controller will exchange security information with the
+Rendez-vous procedure. Thread Network credentials are then provided to the EFR32
+device which will then join the network.
 
 The LCD on the Silabs WSTK shows a QR Code containing the needed commissioning
 information for the BLE connection and starting the Rendez-vous procedure.
 
-The light switch example is intended to serve both as a means to explore the
-workings of CHIP as well as a template for creating real products based on the
+The thermostat example is intended to serve both as a means to explore the
+workings of Matter as well as a template for creating real products based on the
 Silicon Labs platform.
 
 <a name="building"></a>
@@ -52,14 +52,15 @@ Silicon Labs platform.
 
 -   Download the
     [Simplicity Commander](https://www.silabs.com/mcu/programming-options)
-    command line tool, and ensure that `commander` is your shell search path.
+    command line tool, and ensure that `commander` is in your shell search path.
     (For Mac OS X, `commander` is located inside
     `Commander.app/Contents/MacOS/`.)
 
--   Download and install a suitable ARM gcc tool chain:
+-   Download and install a suitable ARM GCC tool chain:
     [GNU Arm Embedded Toolchain 9-2019-q4-major](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-rm/downloads)
 
--   Install some additional tools(likely already present for CHIP developers):
+-   Install some additional tools (likely already present for Matter
+    developers):
 
 #### Linux
 
@@ -124,7 +125,7 @@ Silicon Labs platform.
 
           ./scripts/examples/gn_efr32_example.sh examples/thermostat/efr32/ out/thermostat-app BRD4161A chip_build_libshell=true
 
-*   Build the example as Sleepy End Device (SED)
+*   Build the example as a Sleepy End Device (SED)
 
           $ ./scripts/examples/gn_efr32_example.sh ./examples/thermostat/efr32/ ./out/thermostat-app_SED BRD4161A --sed
 
@@ -232,7 +233,7 @@ combination with JLinkRTTClient as follows:
     commissioned on the same openthread network
 
 -   User interface : **LCD** The LCD on Silabs WSTK shows a QR Code. This QR
-    Code is be scanned by the CHIP Tool app For the Rendez-vous procedure over
+    Code is be scanned by the Chip Tool app For the Rendez-vous procedure over
     BLE
 
         * On devices that do not have or support the LCD Display like the BRD4166A Thunderboard Sense 2,
@@ -284,7 +285,7 @@ combination with JLinkRTTClient as follows:
 
         -   _Pressed and hold for 1 s_ : Toggles the mode of the thermostat.
 
-*   You can provision and control the Chip device using the python controller,
+*   You can provision and control the Matter device using the python controller,
     [CHIPTool](https://github.com/project-chip/connectedhomeip/blob/master/examples/chip-tool/README.md)
     standalone, Android or iOS app
 
@@ -325,7 +326,8 @@ via 2002::2
 
 -   To use the chip-rpc console after it has been installed run:
 
-    `chip-console --device /dev/tty.<SERIALDEVICE> -b 115200 -o /<YourFolder>/pw_log.out`
+    chip-console --device /dev/tty.<SERIALDEVICE> -b 115200 -o
+    /<YourFolder>/pw_log.out`
 
 -   Then you can simulate a button press or release using the following command
     where : idx = 0 or 1 for Button PB0 or PB1 action = 0 for PRESSED, 1 for
@@ -335,7 +337,7 @@ via 2002::2
 
 ## Memory settings
 
-While most of the RAM usage in CHIP is static, allowing easier debugging and
+While most of the RAM usage in Matter is static, allowing easier debugging and
 optimization with symbols analysis, we still need some HEAP for the crypto and
 OpenThread. Size of the HEAP can be modified by changing the value of the
 `configTOTAL_HEAP_SIZE` define inside of the FreeRTOSConfig.h file of this
