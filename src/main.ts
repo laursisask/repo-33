@@ -47,7 +47,8 @@ async function run(): Promise<void> {
     const review_gatekeeper = new ReviewGatekeeper(
       config_file_contents as Settings,
       Array.from(approved_users),
-      payload.pull_request.user.login
+      payload.pull_request.user.login,
+      octokit
     )
 
     const sha = payload.pull_request.head.sha
@@ -55,14 +56,15 @@ async function run(): Promise<void> {
     // https://docs.github.com/en/actions/reference/environment-variables#default-environment-variables
     const workflow_url = `${process.env['GITHUB_SERVER_URL']}/${process.env['GITHUB_REPOSITORY']}/actions/runs/${process.env['GITHUB_RUN_ID']}`
     core.info(`Setting a status on commit (${sha})`)
+    const satisfied = await review_gatekeeper.satisfy()
 
     octokit.rest.repos.createCommitStatus({
       ...context.repo,
       sha,
-      state: review_gatekeeper.satisfy() ? 'success' : 'failure',
+      state: satisfied ? 'success' : 'failure',
       context: 'PR Gatekeeper Status',
       target_url: workflow_url,
-      description: review_gatekeeper.satisfy()
+      description: satisfied
         ? undefined
         : review_gatekeeper.getMessages().join(' ').substring(0, 140)
     })

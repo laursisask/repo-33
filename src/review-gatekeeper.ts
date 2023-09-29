@@ -1,11 +1,15 @@
+import {GitHub} from '@actions/github/lib/utils'
+import {context} from '@actions/github'
+
+interface Group {
+  minimum?: number
+  name: string
+  from: string[]
+}
 export interface Settings {
   approvals: {
     minimum?: number
-    groups?: {
-      minimum?: number
-      name: string
-      from: string[]
-    }[]
+    groups?: Group[]
   }
 }
 
@@ -33,28 +37,35 @@ export class ReviewGatekeeper {
   private messages: string[]
   private meet_criteria: boolean
 
-  constructor(settings: Settings, approved_users: string[], pr_owner: string) {
+  constructor(
+    private settings: Settings,
+    private approved_users: string[],
+    private pr_owner: string,
+    private octokit: InstanceType<typeof GitHub>
+  ) {
     this.messages = []
     this.meet_criteria = true
+  }
 
-    const approvals = settings.approvals
+  async satisfy(): Promise<boolean> {
+    const approvals = this.settings.approvals
     // check if the minimum criteria is met.
     if (approvals.minimum) {
-      if (approvals.minimum > approved_users.length) {
+      if (approvals.minimum > this.approved_users.length) {
         this.meet_criteria = false
         this.messages.push(
-          `${approvals.minimum} reviewers should approve this PR (currently: ${approved_users.length})`
+          `${approvals.minimum} reviewers should approve this PR (currently: ${this.approved_users.length})`
         )
       }
     }
 
     // check if the groups criteria is met.
-    const approved = new Set(approved_users)
+    const approved = new Set(this.approved_users)
     if (approvals.groups) {
       for (const group of approvals.groups) {
-        const required_users = new Set(group.from)
+        const required_users = new Set(await this.expandTeams(group.from))
         // Remove PR owner from required uesrs because PR owner cannot approve their own PR.
-        required_users.delete(pr_owner)
+        required_users.delete(this.pr_owner)
         const approved_from_this_group = set_intersect(required_users, approved)
         const minimum_of_group = group.minimum
         if (minimum_of_group) {
@@ -81,12 +92,98 @@ export class ReviewGatekeeper {
             )
           }
         }
+        if (!this.meet_criteria) {
+          await this.requestReview(group)
+        }
       }
     }
+    return this.meet_criteria
   }
 
-  satisfy(): boolean {
-    return this.meet_criteria
+  async expandTeams(from: string[]): Promise<string[]> {
+    return (
+      await Promise.all(
+        from.map(async team => {
+          if (team.startsWith('@')) {
+            const [org, team_slug] = team.substring(1).split('/')
+            const members = await this.listMembers(org, team_slug)
+            return members
+          } else {
+            return [team]
+          }
+        })
+      )
+    ).flat()
+  }
+
+  async listMembers(org: string, team_slug: string): Promise<string[]> {
+    const members = await this.octokit.rest.teams.listMembersInOrg({
+      org,
+      team_slug
+    })
+    return members.data.map(member => member.login ?? '')
+  }
+
+  async requestReview(group: Group): Promise<void> {
+    if (context.payload.pull_request === undefined) {
+      throw Error('Pull Request Number is Null')
+    }
+
+    const requestedReviewers =
+      await this.octokit.rest.pulls.listRequestedReviewers({
+        ...context.repo,
+        pull_number: context.payload.pull_request.number
+      })
+
+    const existingReviewers = await this.octokit.rest.pulls.listReviews({
+      ...context.repo,
+      pull_number: context.payload.pull_request.number
+    })
+
+    const existingReviewersSet = new Set<string>(
+      requestedReviewers.data.users
+        .map(user => user.login)
+        .concat(existingReviewers.data.map(review => review?.user?.login ?? ''))
+    )
+
+    const neededTeamReviewers = group.from
+      .filter(user => user.startsWith('@'))
+      .map(user => {
+        const [org, team_slug] = user.substring(1).split('/')
+        return {org, team_slug}
+      })
+
+    const teamReviewerMembers = await Promise.all(
+      neededTeamReviewers.map(async team => {
+        const members = await this.listMembers(team.org, team.team_slug)
+        return {team_slug: team.team_slug, members}
+      })
+    )
+
+    const team_reviewers = neededTeamReviewers
+      .filter(team => {
+        const members = teamReviewerMembers.find(
+          member => member.team_slug === team.team_slug
+        )?.members
+        if (members === undefined) {
+          return false
+        }
+        return members.some(member => !existingReviewersSet.has(member))
+      })
+      .map(team => team.team_slug)
+
+    const reviewers = group.from.filter(user => {
+      if (!user.startsWith('@')) {
+        return !existingReviewersSet.has(user)
+      }
+    })
+
+    await this.octokit.rest.pulls.requestReviewers({
+      ...context.repo,
+      pull_number: context.payload.pull_request.number,
+      reviewers,
+      team_reviewers
+    })
   }
 
   getMessages(): string[] {
