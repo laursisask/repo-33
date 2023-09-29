@@ -75,7 +75,9 @@ async function run(): Promise<void> {
     }
   } catch (error) {
     if (error instanceof Error) {
-      core.setFailed(error.message)
+      core.setFailed(error)
+      core.error(error)
+      core.error(error.stack?.toString() ?? '')
       throw error
     }
   }
