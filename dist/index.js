@@ -99,7 +99,7 @@ function run() {
                 }
                 catch (error) {
                     if (error instanceof Error) {
-                        core.error(error);
+                        core.error(JSON.stringify(error));
                     }
                     return { org, team_slug, members: [] };
                 }
@@ -267,14 +267,14 @@ class ReviewGatekeeper {
     }
     getReviwersRequests(group) {
         const existingReviewersSet = new Set(this.requestedReviewers.concat(this.existingReviewers));
-        core.info(`Existing Reviewers Set: ${existingReviewersSet}`);
+        core.info(`Existing Reviewers Set: ${Array.from(existingReviewersSet)}`);
         const neededTeamReviewers = group.from
             .filter(user => user.startsWith('@'))
             .map(user => {
             const [org, team_slug] = user.substring(1).split('/');
             return { org, team_slug };
         });
-        core.info(`Needed Team Reviewers: ${neededTeamReviewers}`);
+        core.info(`Needed Team Reviewers: ${neededTeamReviewers.map(team => team.team_slug)}`);
         const team_reviewers = neededTeamReviewers
             .filter(team => {
             var _a;

@@ -143,7 +143,7 @@ export class ReviewGatekeeper {
     const existingReviewersSet = new Set<string>(
       this.requestedReviewers.concat(this.existingReviewers)
     )
-    core.info(`Existing Reviewers Set: ${existingReviewersSet}`)
+    core.info(`Existing Reviewers Set: ${Array.from(existingReviewersSet)}`)
 
     const neededTeamReviewers = group.from
       .filter(user => user.startsWith('@'))
@@ -151,7 +151,11 @@ export class ReviewGatekeeper {
         const [org, team_slug] = user.substring(1).split('/')
         return {org, team_slug}
       })
-    core.info(`Needed Team Reviewers: ${neededTeamReviewers}`)
+    core.info(
+      `Needed Team Reviewers: ${neededTeamReviewers.map(
+        team => team.team_slug
+      )}`
+    )
 
     const team_reviewers = neededTeamReviewers
       .filter(team => {

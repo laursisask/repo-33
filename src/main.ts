@@ -92,7 +92,7 @@ async function run(): Promise<void> {
               return {org, team_slug, members: memberLogins} as Team
             } catch (error) {
               if (error instanceof Error) {
-                core.error(error)
+                core.error(JSON.stringify(error))
               }
               return {org, team_slug, members: []} as Team
             }
