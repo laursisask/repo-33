@@ -5,6 +5,7 @@ import * as fs from 'fs'
 import * as YAML from 'yaml'
 import {EOL} from 'os'
 import {Settings, ReviewGatekeeper, Team} from './review-gatekeeper'
+import {RequestError} from '@octokit/request-error'
 
 async function run(): Promise<void> {
   try {
@@ -91,8 +92,9 @@ async function run(): Promise<void> {
               core.debug(`Members of ${team} expanded to: ${memberLogins}`)
               return {org, team_slug, members: memberLogins} as Team
             } catch (error) {
-              if (error instanceof Error) {
-                core.error(JSON.stringify(error))
+              if (error instanceof RequestError) {
+                core.error(error.message)
+                core.error(JSON.stringify(error.response))
               }
               return {org, team_slug, members: []} as Team
             }
