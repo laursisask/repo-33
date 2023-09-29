@@ -46,7 +46,7 @@ const YAML = __importStar(__nccwpck_require__(4083));
 const os_1 = __nccwpck_require__(2037);
 const review_gatekeeper_1 = __nccwpck_require__(2779);
 function run() {
-    var _a, _b, _c, _d;
+    var _a, _b, _c;
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const context = github.context;
@@ -76,25 +76,27 @@ function run() {
                 }
             }
             const requestedReviewers = (yield octokit.rest.pulls.listRequestedReviewers(Object.assign(Object.assign({}, context.repo), { pull_number: context.payload.pull_request.number }))).data.users.map(user => user.login);
-            core.debug(`Requested reviewers: ${requestedReviewers.join(', ')}`);
+            core.debug(`Requested reviewers: ${requestedReviewers}`);
             const existingReviewers = reviews.data
                 .map(review => { var _a, _b; return (_b = (_a = review === null || review === void 0 ? void 0 : review.user) === null || _a === void 0 ? void 0 : _a.login) !== null && _b !== void 0 ? _b : null; })
                 .filter(user => user !== null);
-            core.debug(`Existing reviewers: ${existingReviewers.join(', ')}`);
-            const flatFrom = (_b = (_a = settings.approvals) === null || _a === void 0 ? void 0 : _a.groups) === null || _b === void 0 ? void 0 : _b.map(group => group.from).flat().filter(team => !!team);
+            core.debug(`Existing reviewers: ${existingReviewers}`);
+            const flatFrom = settings.approvals &&
+                ((_a = settings.approvals.groups) === null || _a === void 0 ? void 0 : _a.map(group => group.from).flat().filter(team => !!team));
             const expandedTeams = (yield Promise.all(flatFrom
                 .filter(team => team.startsWith('@'))
                 .map((team) => __awaiter(this, void 0, void 0, function* () {
                 const [org, team_slug] = team.substring(1).split('/');
+                core.debug(`Expanding team: ${org} ${team_slug}`);
                 const members = yield octokit.rest.teams.listMembersInOrg({
                     org,
                     team_slug
                 });
                 const memberLogins = members.data.map(member => { var _a; return (_a = member.login) !== null && _a !== void 0 ? _a : ''; });
-                core.info(`Members of ${team} expanded to: ${memberLogins}`);
+                core.debug(`Members of ${team} expanded to: ${memberLogins}`);
                 return { org, team_slug, members: memberLogins };
             })))).flat();
-            core.debug(`Expanded teams: ${Array.from(approved_users).join(', ')}`);
+            core.debug(`Expanded teams: ${Array.from(approved_users)}`);
             const review_gatekeeper = new review_gatekeeper_1.ReviewGatekeeper(settings, Array.from(approved_users), payload.pull_request.user.login, requestedReviewers, existingReviewers, expandedTeams);
             const sha = payload.pull_request.head.sha;
             // The workflow url can be obtained by combining several environment varialbes, as described below:
@@ -119,7 +121,7 @@ function run() {
             if (error instanceof Error) {
                 core.setFailed(error);
                 core.error(error);
-                core.error((_d = (_c = error.stack) === null || _c === void 0 ? void 0 : _c.toString()) !== null && _d !== void 0 ? _d : '');
+                core.error((_c = (_b = error.stack) === null || _b === void 0 ? void 0 : _b.toString()) !== null && _c !== void 0 ? _c : '');
                 throw error;
             }
         }

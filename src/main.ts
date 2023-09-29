@@ -55,18 +55,21 @@ async function run(): Promise<void> {
         pull_number: context.payload.pull_request.number
       })
     ).data.users.map(user => user.login)
-    core.debug(`Requested reviewers: ${requestedReviewers.join(', ')}`)
+
+    core.debug(`Requested reviewers: ${requestedReviewers}`)
 
     const existingReviewers = reviews.data
       .map(review => review?.user?.login ?? null)
       .filter(user => user !== null) as string[]
 
-    core.debug(`Existing reviewers: ${existingReviewers.join(', ')}`)
+    core.debug(`Existing reviewers: ${existingReviewers}`)
 
-    const flatFrom = settings.approvals?.groups
-      ?.map(group => group.from)
-      .flat()
-      .filter(team => !!team) as string[]
+    const flatFrom =
+      settings.approvals &&
+      (settings.approvals.groups
+        ?.map(group => group.from)
+        .flat()
+        .filter(team => !!team) as string[])
 
     const expandedTeams = (
       await Promise.all(
@@ -74,18 +77,19 @@ async function run(): Promise<void> {
           .filter(team => team.startsWith('@'))
           .map(async team => {
             const [org, team_slug] = team.substring(1).split('/')
+            core.debug(`Expanding team: ${org} ${team_slug}`)
             const members = await octokit.rest.teams.listMembersInOrg({
               org,
               team_slug
             })
             const memberLogins = members.data.map(member => member.login ?? '')
-            core.info(`Members of ${team} expanded to: ${memberLogins}`)
+            core.debug(`Members of ${team} expanded to: ${memberLogins}`)
             return {org, team_slug, members: memberLogins} as Team
           })
       )
     ).flat()
 
-    core.debug(`Expanded teams: ${Array.from(approved_users).join(', ')}`)
+    core.debug(`Expanded teams: ${Array.from(approved_users)}`)
 
     const review_gatekeeper = new ReviewGatekeeper(
       settings,
