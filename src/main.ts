@@ -94,7 +94,10 @@ async function run(): Promise<void> {
             } catch (error) {
               if (error instanceof RequestError) {
                 core.error(error.message)
-                core.error(JSON.stringify(error.response))
+                core.error(JSON.stringify(error.response?.status))
+                core.error(JSON.stringify(error.response?.headers))
+                core.error(JSON.stringify(error.response?.data))
+                core.error(JSON.stringify(error.response?.url))
               }
               return {org, team_slug, members: []} as Team
             }
