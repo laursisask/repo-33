@@ -38,6 +38,7 @@ async function run(): Promise<void> {
 
     const token: string = core.getInput('token')
     const octokit = github.getOctokit(token)
+
     const reviews = await octokit.rest.pulls.listReviews({
       ...context.repo,
       pull_number: payload.pull_request.number
@@ -77,14 +78,24 @@ async function run(): Promise<void> {
           .filter(team => team.startsWith('@'))
           .map(async team => {
             const [org, team_slug] = team.substring(1).split('/')
-            core.debug(`Expanding team: ${org} ${team_slug}`)
-            const members = await octokit.rest.teams.listMembersInOrg({
-              org,
-              team_slug
-            })
-            const memberLogins = members.data.map(member => member.login ?? '')
-            core.debug(`Members of ${team} expanded to: ${memberLogins}`)
-            return {org, team_slug, members: memberLogins} as Team
+            core.debug(`Expanding team: '${org}' '${team_slug}'`)
+            try {
+              const members = await octokit.rest.teams.listMembersInOrg({
+                org,
+                team_slug
+              })
+
+              const memberLogins = members.data.map(
+                member => member.login ?? ''
+              )
+              core.debug(`Members of ${team} expanded to: ${memberLogins}`)
+              return {org, team_slug, members: memberLogins} as Team
+            } catch (error) {
+              if (error instanceof Error) {
+                core.error(error)
+              }
+              return {org, team_slug, members: []} as Team
+            }
           })
       )
     ).flat()

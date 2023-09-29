@@ -125,7 +125,18 @@ export class ReviewGatekeeper {
   }
 
   expandTeams(from: string[]): string[] {
-    return from
+    return from.flatMap(user => {
+      if (!user.startsWith('@')) {
+        return [user]
+      }
+      const [org, team_slug] = user.substring(1).split('/')
+
+      return (
+        this.expandedTeams.find(
+          team => team.org === org && team.team_slug === team_slug
+        )?.members ?? []
+      )
+    })
   }
 
   getReviwersRequests(group: Group): ReviewersRequests {

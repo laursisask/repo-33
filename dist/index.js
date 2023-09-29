@@ -87,14 +87,22 @@ function run() {
                 .filter(team => team.startsWith('@'))
                 .map((team) => __awaiter(this, void 0, void 0, function* () {
                 const [org, team_slug] = team.substring(1).split('/');
-                core.debug(`Expanding team: ${org} ${team_slug}`);
-                const members = yield octokit.rest.teams.listMembersInOrg({
-                    org,
-                    team_slug
-                });
-                const memberLogins = members.data.map(member => { var _a; return (_a = member.login) !== null && _a !== void 0 ? _a : ''; });
-                core.debug(`Members of ${team} expanded to: ${memberLogins}`);
-                return { org, team_slug, members: memberLogins };
+                core.debug(`Expanding team: '${org}' '${team_slug}'`);
+                try {
+                    const members = yield octokit.rest.teams.listMembersInOrg({
+                        org,
+                        team_slug
+                    });
+                    const memberLogins = members.data.map(member => { var _a; return (_a = member.login) !== null && _a !== void 0 ? _a : ''; });
+                    core.debug(`Members of ${team} expanded to: ${memberLogins}`);
+                    return { org, team_slug, members: memberLogins };
+                }
+                catch (error) {
+                    if (error instanceof Error) {
+                        core.error(error);
+                    }
+                    return { org, team_slug, members: [] };
+                }
             })))).flat();
             core.debug(`Expanded teams: ${Array.from(approved_users)}`);
             const review_gatekeeper = new review_gatekeeper_1.ReviewGatekeeper(settings, Array.from(approved_users), payload.pull_request.user.login, requestedReviewers, existingReviewers, expandedTeams);
@@ -248,7 +256,14 @@ class ReviewGatekeeper {
         });
     }
     expandTeams(from) {
-        return from;
+        return from.flatMap(user => {
+            var _a, _b;
+            if (!user.startsWith('@')) {
+                return [user];
+            }
+            const [org, team_slug] = user.substring(1).split('/');
+            return ((_b = (_a = this.expandedTeams.find(team => team.org === org && team.team_slug === team_slug)) === null || _a === void 0 ? void 0 : _a.members) !== null && _b !== void 0 ? _b : []);
+        });
     }
     getReviwersRequests(group) {
         const existingReviewersSet = new Set(this.requestedReviewers.concat(this.existingReviewers));
