@@ -18,6 +18,7 @@ async function run(): Promise<void> {
       )
       return
     }
+
     if (context.payload.pull_request === undefined) {
       throw Error('Pull Request is Null')
     }
@@ -31,6 +32,7 @@ async function run(): Promise<void> {
 
     // Parse contents of config file into variable
     const config_file_contents = YAML.parse(config_file)
+    core.debug('Config file contents:')
     core.debug(config_file_contents)
     const settings = config_file_contents as Settings
 
@@ -53,13 +55,13 @@ async function run(): Promise<void> {
         pull_number: context.payload.pull_request.number
       })
     ).data.users.map(user => user.login)
-    core.info(`Requested reviewers: ${requestedReviewers.join(', ')}`)
+    core.debug(`Requested reviewers: ${requestedReviewers.join(', ')}`)
 
     const existingReviewers = reviews.data
       .map(review => review?.user?.login ?? null)
       .filter(user => user !== null) as string[]
 
-    core.info(`Existing reviewers: ${existingReviewers.join(', ')}`)
+    core.debug(`Existing reviewers: ${existingReviewers.join(', ')}`)
 
     const flatFrom = settings.approvals?.groups
       ?.map(group => group.from)
@@ -83,7 +85,7 @@ async function run(): Promise<void> {
       )
     ).flat()
 
-    core.info(`Expanded teams: ${Array.from(approved_users).join(', ')}`)
+    core.debug(`Expanded teams: ${Array.from(approved_users).join(', ')}`)
 
     const review_gatekeeper = new ReviewGatekeeper(
       settings,
