@@ -46,6 +46,7 @@ const YAML = __importStar(__nccwpck_require__(4083));
 const os_1 = __nccwpck_require__(2037);
 const review_gatekeeper_1 = __nccwpck_require__(2779);
 function run() {
+    var _a, _b, _c, _d;
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const context = github.context;
@@ -54,11 +55,17 @@ function run() {
                 core.setFailed(`Invalid event: ${context.eventName}. This action should be triggered on pull_request and pull_request_review`);
                 return;
             }
+            if (context.payload.pull_request === undefined) {
+                throw Error('Pull Request is Null');
+            }
             const payload = context.payload;
             // Read values from config file if it exists
             const config_file = fs.readFileSync(core.getInput('config-file'), 'utf8');
             // Parse contents of config file into variable
             const config_file_contents = YAML.parse(config_file);
+            core.debug('Config file contents:');
+            core.debug(config_file_contents);
+            const settings = config_file_contents;
             const token = core.getInput('token');
             const octokit = github.getOctokit(token);
             const reviews = yield octokit.rest.pulls.listReviews(Object.assign(Object.assign({}, context.repo), { pull_number: payload.pull_request.number }));
@@ -68,26 +75,52 @@ function run() {
                     approved_users.add(review.user.login);
                 }
             }
-            core.debug(config_file_contents);
-            core.debug(Array.from(approved_users).join(', '));
-            const review_gatekeeper = new review_gatekeeper_1.ReviewGatekeeper(config_file_contents, Array.from(approved_users), payload.pull_request.user.login, octokit);
+            const requestedReviewers = (yield octokit.rest.pulls.listRequestedReviewers(Object.assign(Object.assign({}, context.repo), { pull_number: context.payload.pull_request.number }))).data.users.map(user => user.login);
+            core.debug(`Requested reviewers: ${requestedReviewers.join(', ')}`);
+            const existingReviewers = reviews.data
+                .map(review => { var _a, _b; return (_b = (_a = review === null || review === void 0 ? void 0 : review.user) === null || _a === void 0 ? void 0 : _a.login) !== null && _b !== void 0 ? _b : null; })
+                .filter(user => user !== null);
+            core.debug(`Existing reviewers: ${existingReviewers.join(', ')}`);
+            const flatFrom = (_b = (_a = settings.approvals) === null || _a === void 0 ? void 0 : _a.groups) === null || _b === void 0 ? void 0 : _b.map(group => group.from).flat().filter(team => !!team);
+            const expandedTeams = (yield Promise.all(flatFrom
+                .filter(team => team.startsWith('@'))
+                .map((team) => __awaiter(this, void 0, void 0, function* () {
+                const [org, team_slug] = team.substring(1).split('/');
+                const members = yield octokit.rest.teams.listMembersInOrg({
+                    org,
+                    team_slug
+                });
+                const memberLogins = members.data.map(member => { var _a; return (_a = member.login) !== null && _a !== void 0 ? _a : ''; });
+                core.info(`Members of ${team} expanded to: ${memberLogins}`);
+                return { org, team_slug, members: memberLogins };
+            })))).flat();
+            core.debug(`Expanded teams: ${Array.from(approved_users).join(', ')}`);
+            const review_gatekeeper = new review_gatekeeper_1.ReviewGatekeeper(settings, Array.from(approved_users), payload.pull_request.user.login, requestedReviewers, existingReviewers, expandedTeams);
             const sha = payload.pull_request.head.sha;
             // The workflow url can be obtained by combining several environment varialbes, as described below:
             // https://docs.github.com/en/actions/reference/environment-variables#default-environment-variables
             const workflow_url = `${process.env['GITHUB_SERVER_URL']}/${process.env['GITHUB_REPOSITORY']}/actions/runs/${process.env['GITHUB_RUN_ID']}`;
+            const { satisfied, requests } = yield review_gatekeeper.checkSatisfied();
+            core.debug(`Satisfied: ${satisfied}`);
             core.info(`Setting a status on commit (${sha})`);
-            const satisfied = yield review_gatekeeper.satisfy();
             octokit.rest.repos.createCommitStatus(Object.assign(Object.assign({}, context.repo), { sha, state: satisfied ? 'success' : 'failure', context: 'PR Gatekeeper Status', target_url: workflow_url, description: satisfied
                     ? undefined
                     : review_gatekeeper.getMessages().join(' ').substring(0, 140) }));
-            if (!review_gatekeeper.satisfy()) {
+            if (!satisfied) {
                 core.setFailed(review_gatekeeper.getMessages().join(os_1.EOL));
+                if (requests.reviewers.length === 0 ||
+                    requests.team_reviewers.length === 0) {
+                    octokit.rest.pulls.requestReviewers(Object.assign(Object.assign({}, context.repo), { pull_number: payload.pull_request.number, reviewers: requests.reviewers, team_reviewers: requests.team_reviewers }));
+                }
                 return;
             }
         }
         catch (error) {
             if (error instanceof Error) {
-                core.setFailed(error.message);
+                core.setFailed(error);
+                core.error(error);
+                core.error((_d = (_c = error.stack) === null || _c === void 0 ? void 0 : _c.toString()) !== null && _d !== void 0 ? _d : '');
+                throw error;
             }
         }
     });
@@ -102,6 +135,29 @@ run();
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -113,7 +169,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ReviewGatekeeper = void 0;
-const github_1 = __nccwpck_require__(5438);
+const core = __importStar(__nccwpck_require__(2186));
 function set_equal(as, bs) {
     if (as.size !== bs.size) {
         return false;
@@ -132,15 +188,17 @@ function set_to_string(as) {
     return [...as].join(', ');
 }
 class ReviewGatekeeper {
-    constructor(settings, approved_users, pr_owner, octokit) {
+    constructor(settings, approved_users, pr_owner, requestedReviewers, existingReviewers, expandedTeams) {
         this.settings = settings;
         this.approved_users = approved_users;
         this.pr_owner = pr_owner;
-        this.octokit = octokit;
+        this.requestedReviewers = requestedReviewers;
+        this.existingReviewers = existingReviewers;
+        this.expandedTeams = expandedTeams;
         this.messages = [];
         this.meet_criteria = true;
     }
-    satisfy() {
+    checkSatisfied() {
         return __awaiter(this, void 0, void 0, function* () {
             const approvals = this.settings.approvals;
             // check if the minimum criteria is met.
@@ -150,11 +208,12 @@ class ReviewGatekeeper {
                     this.messages.push(`${approvals.minimum} reviewers should approve this PR (currently: ${this.approved_users.length})`);
                 }
             }
+            const requests = [];
             // check if the groups criteria is met.
             const approved = new Set(this.approved_users);
             if (approvals.groups) {
                 for (const group of approvals.groups) {
-                    const required_users = new Set(yield this.expandTeams(group.from));
+                    const required_users = new Set(this.expandTeams(group.from));
                     // Remove PR owner from required uesrs because PR owner cannot approve their own PR.
                     required_users.delete(this.pr_owner);
                     const approved_from_this_group = set_intersect(required_users, approved);
@@ -173,74 +232,50 @@ class ReviewGatekeeper {
                         }
                     }
                     if (!this.meet_criteria) {
-                        yield this.requestReview(group);
+                        requests.push(this.getReviwersRequests(group));
                     }
                 }
             }
-            return this.meet_criteria;
+            return {
+                satisfied: this.meet_criteria,
+                requests: {
+                    reviewers: requests.flatMap(request => request.reviewers),
+                    team_reviewers: requests.flatMap(request => request.team_reviewers)
+                }
+            };
         });
     }
     expandTeams(from) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return (yield Promise.all(from.map((team) => __awaiter(this, void 0, void 0, function* () {
-                if (team.startsWith('@')) {
-                    const [org, team_slug] = team.substring(1).split('/');
-                    const members = yield this.listMembers(org, team_slug);
-                    return members;
-                }
-                else {
-                    return [team];
-                }
-            })))).flat();
-        });
+        return from;
     }
-    listMembers(org, team_slug) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const members = yield this.octokit.rest.teams.listMembersInOrg({
-                org,
-                team_slug
-            });
-            return members.data.map(member => { var _a; return (_a = member.login) !== null && _a !== void 0 ? _a : ''; });
+    getReviwersRequests(group) {
+        const existingReviewersSet = new Set(this.requestedReviewers.concat(this.existingReviewers));
+        core.info(`Existing Reviewers Set: ${existingReviewersSet}`);
+        const neededTeamReviewers = group.from
+            .filter(user => user.startsWith('@'))
+            .map(user => {
+            const [org, team_slug] = user.substring(1).split('/');
+            return { org, team_slug };
         });
-    }
-    requestReview(group) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (github_1.context.payload.pull_request === undefined) {
-                throw Error('Pull Request Number is Null');
+        core.info(`Needed Team Reviewers: ${neededTeamReviewers}`);
+        const team_reviewers = neededTeamReviewers
+            .filter(team => {
+            var _a;
+            const members = (_a = this.expandedTeams.find(member => member.team_slug === team.team_slug)) === null || _a === void 0 ? void 0 : _a.members;
+            if (members === undefined) {
+                return false;
             }
-            const requestedReviewers = yield this.octokit.rest.pulls.listRequestedReviewers(Object.assign(Object.assign({}, github_1.context.repo), { pull_number: github_1.context.payload.pull_request.number }));
-            const existingReviewers = yield this.octokit.rest.pulls.listReviews(Object.assign(Object.assign({}, github_1.context.repo), { pull_number: github_1.context.payload.pull_request.number }));
-            const existingReviewersSet = new Set(requestedReviewers.data.users
-                .map(user => user.login)
-                .concat(existingReviewers.data.map(review => { var _a, _b; return (_b = (_a = review === null || review === void 0 ? void 0 : review.user) === null || _a === void 0 ? void 0 : _a.login) !== null && _b !== void 0 ? _b : ''; })));
-            const neededTeamReviewers = group.from
-                .filter(user => user.startsWith('@'))
-                .map(user => {
-                const [org, team_slug] = user.substring(1).split('/');
-                return { org, team_slug };
-            });
-            const teamReviewerMembers = yield Promise.all(neededTeamReviewers.map((team) => __awaiter(this, void 0, void 0, function* () {
-                const members = yield this.listMembers(team.org, team.team_slug);
-                return { team_slug: team.team_slug, members };
-            })));
-            const team_reviewers = neededTeamReviewers
-                .filter(team => {
-                var _a;
-                const members = (_a = teamReviewerMembers.find(member => member.team_slug === team.team_slug)) === null || _a === void 0 ? void 0 : _a.members;
-                if (members === undefined) {
-                    return false;
-                }
-                return members.some(member => !existingReviewersSet.has(member));
-            })
-                .map(team => team.team_slug);
-            const reviewers = group.from.filter(user => {
-                if (!user.startsWith('@')) {
-                    return !existingReviewersSet.has(user);
-                }
-            });
-            yield this.octokit.rest.pulls.requestReviewers(Object.assign(Object.assign({}, github_1.context.repo), { pull_number: github_1.context.payload.pull_request.number, reviewers,
-                team_reviewers }));
+            return members.some(member => !existingReviewersSet.has(member));
+        })
+            .map(team => team.team_slug);
+        core.info(`Team Reviewers: ${team_reviewers}`);
+        const reviewers = group.from.filter(user => {
+            if (!user.startsWith('@')) {
+                return !existingReviewersSet.has(user);
+            }
         });
+        core.info(`Reviewers: ${reviewers}`);
+        return { reviewers, team_reviewers };
     }
     getMessages() {
         return this.messages;
