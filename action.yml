@@ -1,6 +1,6 @@
-name: 'PR Gatekeeper'
+name: 'Advanced PR Approvals'
 description: 'An action to perform the required checks for complex pull request approval cases'
-author: 'octodemo'
+author: 'pleo-io'
 branding:
   icon: 'check-square'
   color: 'green'
