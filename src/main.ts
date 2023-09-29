@@ -55,8 +55,8 @@ async function run(): Promise<void> {
     // The workflow url can be obtained by combining several environment varialbes, as described below:
     // https://docs.github.com/en/actions/reference/environment-variables#default-environment-variables
     const workflow_url = `${process.env['GITHUB_SERVER_URL']}/${process.env['GITHUB_REPOSITORY']}/actions/runs/${process.env['GITHUB_RUN_ID']}`
+    const satisfied = await review_gatekeeper.checkSatisfied()
     core.info(`Setting a status on commit (${sha})`)
-    const satisfied = await review_gatekeeper.satisfy()
 
     octokit.rest.repos.createCommitStatus({
       ...context.repo,
@@ -69,13 +69,14 @@ async function run(): Promise<void> {
         : review_gatekeeper.getMessages().join(' ').substring(0, 140)
     })
 
-    if (!review_gatekeeper.satisfy()) {
+    if (!satisfied) {
       core.setFailed(review_gatekeeper.getMessages().join(EOL))
       return
     }
   } catch (error) {
     if (error instanceof Error) {
       core.setFailed(error.message)
+      throw error
     }
   }
 }

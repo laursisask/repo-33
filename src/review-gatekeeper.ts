@@ -1,5 +1,6 @@
 import {GitHub} from '@actions/github/lib/utils'
 import {context} from '@actions/github'
+import * as core from '@actions/core'
 
 interface Group {
   minimum?: number
@@ -47,7 +48,7 @@ export class ReviewGatekeeper {
     this.meet_criteria = true
   }
 
-  async satisfy(): Promise<boolean> {
+  async checkSatisfied(): Promise<boolean> {
     const approvals = this.settings.approvals
     // check if the minimum criteria is met.
     if (approvals.minimum) {
@@ -92,6 +93,7 @@ export class ReviewGatekeeper {
             )
           }
         }
+
         if (!this.meet_criteria) {
           await this.requestReview(group)
         }
@@ -107,6 +109,7 @@ export class ReviewGatekeeper {
           if (team.startsWith('@')) {
             const [org, team_slug] = team.substring(1).split('/')
             const members = await this.listMembers(org, team_slug)
+            core.info(`Members of ${team} expanded to: ${members}`)
             return members
           } else {
             return [team]
@@ -129,22 +132,30 @@ export class ReviewGatekeeper {
       throw Error('Pull Request Number is Null')
     }
 
-    const requestedReviewers =
+    const requestedReviewers = (
       await this.octokit.rest.pulls.listRequestedReviewers({
         ...context.repo,
         pull_number: context.payload.pull_request.number
       })
+    ).data.users.map(user => user.login)
 
-    const existingReviewers = await this.octokit.rest.pulls.listReviews({
-      ...context.repo,
-      pull_number: context.payload.pull_request.number
-    })
+    core.info(`Requested Reviewers: ${requestedReviewers}`)
+
+    const existingReviewers = (
+      await this.octokit.rest.pulls.listReviews({
+        ...context.repo,
+        pull_number: context.payload.pull_request.number
+      })
+    ).data
+      .map(review => review?.user?.login ?? null)
+      .filter(user => user !== null) as string[]
+
+    core.info(`Existing Reviewers: ${existingReviewers}`)
 
     const existingReviewersSet = new Set<string>(
-      requestedReviewers.data.users
-        .map(user => user.login)
-        .concat(existingReviewers.data.map(review => review?.user?.login ?? ''))
+      requestedReviewers.concat(existingReviewers)
     )
+    core.info(`Existing Reviewers Set: ${existingReviewersSet}`)
 
     const neededTeamReviewers = group.from
       .filter(user => user.startsWith('@'))
@@ -152,6 +163,7 @@ export class ReviewGatekeeper {
         const [org, team_slug] = user.substring(1).split('/')
         return {org, team_slug}
       })
+    core.info(`Needed Team Reviewers: ${neededTeamReviewers}`)
 
     const teamReviewerMembers = await Promise.all(
       neededTeamReviewers.map(async team => {
@@ -159,6 +171,7 @@ export class ReviewGatekeeper {
         return {team_slug: team.team_slug, members}
       })
     )
+    core.info(`Team Reviewer Members: ${teamReviewerMembers}`)
 
     const team_reviewers = neededTeamReviewers
       .filter(team => {
@@ -172,11 +185,15 @@ export class ReviewGatekeeper {
       })
       .map(team => team.team_slug)
 
+    core.info(`Team Reviewers: ${team_reviewers}`)
+
     const reviewers = group.from.filter(user => {
       if (!user.startsWith('@')) {
         return !existingReviewersSet.has(user)
       }
     })
+
+    core.info(`Reviewers: ${reviewers}`)
 
     await this.octokit.rest.pulls.requestReviewers({
       ...context.repo,
