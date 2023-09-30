@@ -46,7 +46,7 @@ const YAML = __importStar(__nccwpck_require__(4083));
 const os_1 = __nccwpck_require__(2037);
 const review_gatekeeper_1 = __nccwpck_require__(2779);
 function run() {
-    var _a, _b, _c;
+    var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const context = github.context;
@@ -63,8 +63,8 @@ function run() {
             const config_file = fs.readFileSync(core.getInput('config-file'), 'utf8');
             // Parse contents of config file into variable
             const config_file_contents = YAML.parse(config_file);
-            core.debug('Config file contents:');
-            core.debug(config_file_contents);
+            core.info('Config file contents:');
+            core.info(config_file_contents);
             const settings = config_file_contents;
             const token = core.getInput('token');
             const octokit = github.getOctokit(token);
@@ -76,51 +76,38 @@ function run() {
                 }
             }
             const requestedReviewers = (yield octokit.rest.pulls.listRequestedReviewers(Object.assign(Object.assign({}, context.repo), { pull_number: context.payload.pull_request.number }))).data.users.map(user => user.login);
-            core.debug(`Requested reviewers: ${requestedReviewers}`);
+            core.info(`Requested reviewers: ${requestedReviewers}`);
             const existingReviewers = reviews.data
                 .map(review => { var _a, _b; return (_b = (_a = review === null || review === void 0 ? void 0 : review.user) === null || _a === void 0 ? void 0 : _a.login) !== null && _b !== void 0 ? _b : null; })
                 .filter(user => user !== null);
-            core.debug(`Existing reviewers: ${existingReviewers}`);
-            const flatFrom = settings.approvals &&
-                ((_a = settings.approvals.groups) === null || _a === void 0 ? void 0 : _a.map(group => group.from).flat().filter(team => !!team));
-            const expandedTeams = (yield Promise.all(flatFrom
-                .filter(team => team.startsWith('@'))
-                .map((team) => __awaiter(this, void 0, void 0, function* () {
-                const [org, team_slug] = team.substring(1).split('/');
-                core.debug(`Expanding team: '${org}' '${team_slug}'`);
-                try {
-                    const members = yield octokit.rest.teams.listMembersInOrg({
-                        org,
-                        team_slug
-                    });
-                    const memberLogins = members.data.map(member => { var _a; return (_a = member.login) !== null && _a !== void 0 ? _a : ''; });
-                    core.debug(`Members of ${team} expanded to: ${memberLogins}`);
-                    return { org, team_slug, members: memberLogins };
-                }
-                catch (error) {
-                    if (error instanceof Error) {
-                        core.error(JSON.stringify(error));
-                    }
-                    return { org, team_slug, members: [] };
-                }
+            core.info(`Existing reviewers: ${existingReviewers}`);
+            const expandedTeams = (yield Promise.all(settings.groups.map((group) => __awaiter(this, void 0, void 0, function* () {
+                const { org, team_slug } = group;
+                core.info(`Expanding team: '${org}' '${team_slug}'`);
+                const members = yield octokit.rest.teams.listMembersInOrg({
+                    org,
+                    team_slug
+                });
+                const memberLogins = members.data.map(member => { var _a; return (_a = member.login) !== null && _a !== void 0 ? _a : ''; });
+                core.info(`Members of ${group.display_name} expanded to: ${memberLogins}`);
+                return { org, team_slug, members: memberLogins };
             })))).flat();
-            core.debug(`Expanded teams: ${Array.from(approved_users)}`);
+            core.info(`Expanded teams: ${Array.from(approved_users)}`);
             const review_gatekeeper = new review_gatekeeper_1.ReviewGatekeeper(settings, Array.from(approved_users), payload.pull_request.user.login, requestedReviewers, existingReviewers, expandedTeams);
             const sha = payload.pull_request.head.sha;
             // The workflow url can be obtained by combining several environment varialbes, as described below:
             // https://docs.github.com/en/actions/reference/environment-variables#default-environment-variables
             const workflow_url = `${process.env['GITHUB_SERVER_URL']}/${process.env['GITHUB_REPOSITORY']}/actions/runs/${process.env['GITHUB_RUN_ID']}`;
-            const { satisfied, requests } = yield review_gatekeeper.checkSatisfied();
-            core.debug(`Satisfied: ${satisfied}`);
+            const { satisfied, teams_to_request } = yield review_gatekeeper.checkSatisfied();
+            core.info(`Satisfied: ${satisfied}`);
             core.info(`Setting a status on commit (${sha})`);
             octokit.rest.repos.createCommitStatus(Object.assign(Object.assign({}, context.repo), { sha, state: satisfied ? 'success' : 'failure', context: 'PR Gatekeeper Status', target_url: workflow_url, description: satisfied
                     ? undefined
                     : review_gatekeeper.getMessages().join(' ').substring(0, 140) }));
             if (!satisfied) {
                 core.setFailed(review_gatekeeper.getMessages().join(os_1.EOL));
-                if (requests.reviewers.length === 0 ||
-                    requests.team_reviewers.length === 0) {
-                    octokit.rest.pulls.requestReviewers(Object.assign(Object.assign({}, context.repo), { pull_number: payload.pull_request.number, reviewers: requests.reviewers, team_reviewers: requests.team_reviewers }));
+                if (teams_to_request.length === 0) {
+                    octokit.rest.pulls.requestReviewers(Object.assign(Object.assign({}, context.repo), { pull_number: payload.pull_request.number, team_reviewers: teams_to_request.map(team => team.team_slug) }));
                 }
                 return;
             }
@@ -129,7 +116,7 @@ function run() {
             if (error instanceof Error) {
                 core.setFailed(error);
                 core.error(error);
-                core.error((_c = (_b = error.stack) === null || _b === void 0 ? void 0 : _b.toString()) !== null && _c !== void 0 ? _c : '');
+                core.error((_b = (_a = error.stack) === null || _a === void 0 ? void 0 : _a.toString()) !== null && _b !== void 0 ? _b : '');
                 throw error;
             }
         }
@@ -141,33 +128,10 @@ run();
 /***/ }),
 
 /***/ 2779:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+/***/ (function(__unused_webpack_module, exports) {
 
 "use strict";
 
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -179,18 +143,6 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ReviewGatekeeper = void 0;
-const core = __importStar(__nccwpck_require__(2186));
-function set_equal(as, bs) {
-    if (as.size !== bs.size) {
-        return false;
-    }
-    for (const a of as) {
-        if (!bs.has(a)) {
-            return false;
-        }
-    }
-    return true;
-}
 function set_intersect(as, bs) {
     return new Set([...as].filter(e => bs.has(e)));
 }
@@ -199,7 +151,6 @@ function set_to_string(as) {
 }
 class ReviewGatekeeper {
     constructor(settings, approved_users, pr_owner, requestedReviewers, existingReviewers, expandedTeams) {
-        this.settings = settings;
         this.approved_users = approved_users;
         this.pr_owner = pr_owner;
         this.requestedReviewers = requestedReviewers;
@@ -207,92 +158,45 @@ class ReviewGatekeeper {
         this.expandedTeams = expandedTeams;
         this.messages = [];
         this.meet_criteria = true;
+        if (settings.groups) {
+            this.groups = settings.groups;
+        }
+        else {
+            throw Error('INVALID SETTINGS: No groups specified');
+        }
     }
     checkSatisfied() {
         return __awaiter(this, void 0, void 0, function* () {
-            const approvals = this.settings.approvals;
-            // check if the minimum criteria is met.
-            if (approvals.minimum) {
-                if (approvals.minimum > this.approved_users.length) {
-                    this.meet_criteria = false;
-                    this.messages.push(`${approvals.minimum} reviewers should approve this PR (currently: ${this.approved_users.length})`);
-                }
-            }
-            const requests = [];
+            const teams_to_request = [];
             // check if the groups criteria is met.
             const approved = new Set(this.approved_users);
-            if (approvals.groups) {
-                for (const group of approvals.groups) {
-                    const required_users = new Set(this.expandTeams(group.from));
-                    // Remove PR owner from required uesrs because PR owner cannot approve their own PR.
-                    required_users.delete(this.pr_owner);
-                    const approved_from_this_group = set_intersect(required_users, approved);
-                    const minimum_of_group = group.minimum;
-                    if (minimum_of_group) {
-                        if (minimum_of_group > approved_from_this_group.size) {
-                            this.meet_criteria = false;
-                            this.messages.push(`${minimum_of_group} reviewers from the group '${group.name}' (${set_to_string(required_users)}) should approve this PR (currently: ${approved_from_this_group.size})`);
-                        }
-                    }
-                    else {
-                        // If no `minimum` option is specified, approval from all is required.
-                        if (!set_equal(approved_from_this_group, required_users)) {
-                            this.meet_criteria = false;
-                            this.messages.push(`All of the reviewers from the group '${group.name}' (${set_to_string(required_users)}) should approve this PR`);
-                        }
-                    }
-                    if (!this.meet_criteria) {
-                        requests.push(this.getReviwersRequests(group));
+            for (const group of this.groups) {
+                const required_users = this.getRequiredReviewers(group);
+                const approved_from_this_group = set_intersect(required_users, approved);
+                if (group.minimum > approved_from_this_group.size) {
+                    this.meet_criteria = false;
+                    this.messages.push(`${group.minimum} reviewers from the group '${group.display_name}' (${set_to_string(required_users)}) should approve this PR (currently: ${approved_from_this_group.size})`);
+                    const existingRequestedReviewers = new Set(this.requestedReviewers.concat(this.existingReviewers));
+                    if (set_intersect(required_users, existingRequestedReviewers).size === 0) {
+                        teams_to_request.push(group);
                     }
                 }
             }
             return {
                 satisfied: this.meet_criteria,
-                requests: {
-                    reviewers: requests.flatMap(request => request.reviewers),
-                    team_reviewers: requests.flatMap(request => request.team_reviewers)
-                }
+                teams_to_request
             };
         });
     }
-    expandTeams(from) {
-        return from.flatMap(user => {
-            var _a, _b;
-            if (!user.startsWith('@')) {
-                return [user];
-            }
-            const [org, team_slug] = user.substring(1).split('/');
-            return ((_b = (_a = this.expandedTeams.find(team => team.org === org && team.team_slug === team_slug)) === null || _a === void 0 ? void 0 : _a.members) !== null && _b !== void 0 ? _b : []);
-        });
+    getTeamMembers(org, team_slug) {
+        var _a;
+        return (_a = this.expandedTeams.find(member => member.team_slug === team_slug && member.org === org)) === null || _a === void 0 ? void 0 : _a.members;
     }
-    getReviwersRequests(group) {
-        const existingReviewersSet = new Set(this.requestedReviewers.concat(this.existingReviewers));
-        core.info(`Existing Reviewers Set: ${Array.from(existingReviewersSet)}`);
-        const neededTeamReviewers = group.from
-            .filter(user => user.startsWith('@'))
-            .map(user => {
-            const [org, team_slug] = user.substring(1).split('/');
-            return { org, team_slug };
-        });
-        core.info(`Needed Team Reviewers: ${neededTeamReviewers.map(team => team.team_slug)}`);
-        const team_reviewers = neededTeamReviewers
-            .filter(team => {
-            var _a;
-            const members = (_a = this.expandedTeams.find(member => member.team_slug === team.team_slug)) === null || _a === void 0 ? void 0 : _a.members;
-            if (members === undefined) {
-                return false;
-            }
-            return members.some(member => !existingReviewersSet.has(member));
-        })
-            .map(team => team.team_slug);
-        core.info(`Team Reviewers: ${team_reviewers}`);
-        const reviewers = group.from.filter(user => {
-            if (!user.startsWith('@')) {
-                return !existingReviewersSet.has(user);
-            }
-        });
-        core.info(`Reviewers: ${reviewers}`);
-        return { reviewers, team_reviewers };
+    getRequiredReviewers(group) {
+        const required_users = new Set(this.getTeamMembers(group.org, group.team_slug));
+        // Remove PR owner from required uesrs because PR owner cannot approve their own PR.
+        required_users.delete(this.pr_owner);
+        return required_users;
     }
     getMessages() {
         return this.messages;

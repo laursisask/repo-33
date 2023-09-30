@@ -4,8 +4,7 @@ import * as Webhooks from '@octokit/webhooks-types'
 import * as fs from 'fs'
 import * as YAML from 'yaml'
 import {EOL} from 'os'
-import {Settings, ReviewGatekeeper, Team} from './review-gatekeeper'
-import {RequestError} from '@octokit/request-error'
+import {Settings, ReviewGatekeeper, TeamWithMembers} from './review-gatekeeper'
 
 async function run(): Promise<void> {
   try {
@@ -33,8 +32,8 @@ async function run(): Promise<void> {
 
     // Parse contents of config file into variable
     const config_file_contents = YAML.parse(config_file)
-    core.debug('Config file contents:')
-    core.debug(config_file_contents)
+    core.info('Config file contents:')
+    core.info(config_file_contents)
     const settings = config_file_contents as Settings
 
     const token: string = core.getInput('token')
@@ -58,54 +57,35 @@ async function run(): Promise<void> {
       })
     ).data.users.map(user => user.login)
 
-    core.debug(`Requested reviewers: ${requestedReviewers}`)
+    core.info(`Requested reviewers: ${requestedReviewers}`)
 
     const existingReviewers = reviews.data
       .map(review => review?.user?.login ?? null)
       .filter(user => user !== null) as string[]
 
-    core.debug(`Existing reviewers: ${existingReviewers}`)
-
-    const flatFrom =
-      settings.approvals &&
-      (settings.approvals.groups
-        ?.map(group => group.from)
-        .flat()
-        .filter(team => !!team) as string[])
+    core.info(`Existing reviewers: ${existingReviewers}`)
 
     const expandedTeams = (
       await Promise.all(
-        flatFrom
-          .filter(team => team.startsWith('@'))
-          .map(async team => {
-            const [org, team_slug] = team.substring(1).split('/')
-            core.debug(`Expanding team: '${org}' '${team_slug}'`)
-            try {
-              const members = await octokit.rest.teams.listMembersInOrg({
-                org,
-                team_slug
-              })
+        settings.groups.map(async group => {
+          const {org, team_slug} = group
+          core.info(`Expanding team: '${org}' '${team_slug}'`)
 
-              const memberLogins = members.data.map(
-                member => member.login ?? ''
-              )
-              core.debug(`Members of ${team} expanded to: ${memberLogins}`)
-              return {org, team_slug, members: memberLogins} as Team
-            } catch (error) {
-              if (error instanceof RequestError) {
-                core.error(error.message)
-                core.error(JSON.stringify(error.response?.status))
-                core.error(JSON.stringify(error.response?.headers))
-                core.error(JSON.stringify(error.response?.data))
-                core.error(JSON.stringify(error.response?.url))
-              }
-              return {org, team_slug, members: []} as Team
-            }
+          const members = await octokit.rest.teams.listMembersInOrg({
+            org,
+            team_slug
           })
+
+          const memberLogins = members.data.map(member => member.login ?? '')
+          core.info(
+            `Members of ${group.display_name} expanded to: ${memberLogins}`
+          )
+          return {org, team_slug, members: memberLogins} as TeamWithMembers
+        })
       )
     ).flat()
 
-    core.debug(`Expanded teams: ${Array.from(approved_users)}`)
+    core.info(`Expanded teams: ${Array.from(approved_users)}`)
 
     const review_gatekeeper = new ReviewGatekeeper(
       settings,
@@ -120,8 +100,9 @@ async function run(): Promise<void> {
     // The workflow url can be obtained by combining several environment varialbes, as described below:
     // https://docs.github.com/en/actions/reference/environment-variables#default-environment-variables
     const workflow_url = `${process.env['GITHUB_SERVER_URL']}/${process.env['GITHUB_REPOSITORY']}/actions/runs/${process.env['GITHUB_RUN_ID']}`
-    const {satisfied, requests} = await review_gatekeeper.checkSatisfied()
-    core.debug(`Satisfied: ${satisfied}`)
+    const {satisfied, teams_to_request} =
+      await review_gatekeeper.checkSatisfied()
+    core.info(`Satisfied: ${satisfied}`)
     core.info(`Setting a status on commit (${sha})`)
 
     octokit.rest.repos.createCommitStatus({
@@ -137,15 +118,11 @@ async function run(): Promise<void> {
 
     if (!satisfied) {
       core.setFailed(review_gatekeeper.getMessages().join(EOL))
-      if (
-        requests.reviewers.length === 0 ||
-        requests.team_reviewers.length === 0
-      ) {
+      if (teams_to_request.length === 0) {
         octokit.rest.pulls.requestReviewers({
           ...context.repo,
           pull_number: payload.pull_request.number,
-          reviewers: requests.reviewers,
-          team_reviewers: requests.team_reviewers
+          team_reviewers: teams_to_request.map(team => team.team_slug)
         })
       }
       return
