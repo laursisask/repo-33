@@ -39,8 +39,8 @@ export class ReviewGatekeeper {
     settings: Settings,
     private approved_users: string[],
     private pr_owner: string,
-    private requestedReviewers: string[],
-    private existingReviewers: string[],
+    private requested_team_reviewers: string[],
+    private existing_user_reviewers: string[],
     private expandedTeams: TeamWithMembers[]
   ) {
     this.messages = []
@@ -73,11 +73,10 @@ export class ReviewGatekeeper {
           })`
         )
 
-        const existingRequestedReviewers = new Set(
-          this.requestedReviewers.concat(this.existingReviewers)
-        )
         if (
-          set_intersect(required_users, existingRequestedReviewers).size === 0
+          set_intersect(required_users, new Set(this.existing_user_reviewers))
+            .size === 0 &&
+          !this.requested_team_reviewers.includes(group.team_slug)
         ) {
           teams_to_request.push(group)
         }

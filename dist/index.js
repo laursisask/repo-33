@@ -75,7 +75,7 @@ function run() {
                     approved_users.add(review.user.login);
                 }
             }
-            const requestedReviewers = (yield octokit.rest.pulls.listRequestedReviewers(Object.assign(Object.assign({}, context.repo), { pull_number: context.payload.pull_request.number }))).data.users.map(user => user.login);
+            const requestedReviewers = (yield octokit.rest.pulls.listRequestedReviewers(Object.assign(Object.assign({}, context.repo), { pull_number: context.payload.pull_request.number }))).data.teams.map(team => team.slug);
             core.info(`Requested reviewers: ${requestedReviewers}`);
             const existingReviewers = reviews.data
                 .map(review => { var _a, _b; return (_b = (_a = review === null || review === void 0 ? void 0 : review.user) === null || _a === void 0 ? void 0 : _a.login) !== null && _b !== void 0 ? _b : null; })
@@ -150,11 +150,11 @@ function set_to_string(as) {
     return [...as].join(', ');
 }
 class ReviewGatekeeper {
-    constructor(settings, approved_users, pr_owner, requestedReviewers, existingReviewers, expandedTeams) {
+    constructor(settings, approved_users, pr_owner, requested_team_reviewers, existing_user_reviewers, expandedTeams) {
         this.approved_users = approved_users;
         this.pr_owner = pr_owner;
-        this.requestedReviewers = requestedReviewers;
-        this.existingReviewers = existingReviewers;
+        this.requested_team_reviewers = requested_team_reviewers;
+        this.existing_user_reviewers = existing_user_reviewers;
         this.expandedTeams = expandedTeams;
         this.messages = [];
         this.meet_criteria = true;
@@ -176,8 +176,9 @@ class ReviewGatekeeper {
                 if (group.minimum > approved_from_this_group.size) {
                     this.meet_criteria = false;
                     this.messages.push(`${group.minimum} reviewers from the group '${group.display_name}' (${set_to_string(required_users)}) should approve this PR (currently: ${approved_from_this_group.size})`);
-                    const existingRequestedReviewers = new Set(this.requestedReviewers.concat(this.existingReviewers));
-                    if (set_intersect(required_users, existingRequestedReviewers).size === 0) {
+                    if (set_intersect(required_users, new Set(this.existing_user_reviewers))
+                        .size === 0 &&
+                        !this.requested_team_reviewers.includes(group.team_slug)) {
                         teams_to_request.push(group);
                     }
                 }

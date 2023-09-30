@@ -55,7 +55,7 @@ async function run(): Promise<void> {
         ...context.repo,
         pull_number: context.payload.pull_request.number
       })
-    ).data.users.map(user => user.login)
+    ).data.teams.map(team => team.slug)
 
     core.info(`Requested reviewers: ${requestedReviewers}`)
 
