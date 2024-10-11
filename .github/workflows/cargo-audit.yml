@@ -766,12 +766,12 @@ jobs:
     - continue-on-error: true
       uses: actions/checkout@v3
     - continue-on-error: true
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('Cargo.lock') }}
         path: ~/.cargo/registry
     - continue-on-error: true
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         key: ${{ runner.os }}-cargo-index-${{ hashFiles('Cargo.lock') }}
         path: ~/.cargo/git
