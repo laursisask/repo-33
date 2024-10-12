@@ -747,7 +747,7 @@ jobs:
     - continue-on-error: true
       uses: actions/checkout@v2
     - continue-on-error: true
-      uses: ibiqlik/action-yamllint@v1
+      uses: ibiqlik/action-yamllint@v3
       with:
         file_or_dir: test/
     - name: after
