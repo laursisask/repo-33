@@ -5,10 +5,11 @@ go 1.14
 replace go.opentelemetry.io/contrib => ../../../..
 
 require (
-	github.com/gin-gonic/gin v1.6.3
-	github.com/stretchr/testify v1.6.1
+	github.com/gin-gonic/gin v1.10.0
+	github.com/stretchr/testify v1.9.0
 	go.opentelemetry.io/contrib v0.11.0
-	go.opentelemetry.io/otel v0.11.0
+	go.opentelemetry.io/otel v1.4.0
 	go.opentelemetry.io/otel/exporters/stdout v0.11.0
+	go.opentelemetry.io/otel/internal/metric v0.27.0 // indirect
 	go.opentelemetry.io/otel/sdk v0.11.0
 )
