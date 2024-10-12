@@ -298,7 +298,7 @@ jobs:
         \ >> $GITHUB_ENV\necho \"MD5SUM_PATH=$assets_path/md5sum\" >> $GITHUB_ENV\n"
     - continue-on-error: true
       name: Setup Docker
-      uses: docker-practice/actions-setup-docker@1.0.11
+      uses: docker-practice/actions-setup-docker@1.0.12
       with:
         docker_channel: stable
         docker_version: 18.09
